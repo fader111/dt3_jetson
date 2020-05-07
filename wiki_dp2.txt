@@ -1,0 +1,36 @@
+
+дела обстоят так:
+	см. wiki_old_dp.txt там основной функционал. 
+	
+	все сетевые настройки в отличие от малины лежат тут:
+	/etc/NetworkManager/system-connections/Wired connection 1  -  соответственно переписаны 
+	методы работы с сетевыми настройками
+	2.12.2019 обнаружил что детектор проработал 2 выходных - за это время полностью выел всю память и весь своп.
+	с dt такая проблемы была когда очередь Multiprocessing Queue не очищалась если не работал web интерфейс. 
+	тут все предусмотрено, чтобы такой ситуации не было. с длинами очередей все ок. 2.12 обнаружил что оч много вывода в консоль.
+	отправил в запускающем скрипте /home/a/startdet.sh весть вывод в > /dev/null (в никуда) пока все работает. но надо еще смотерть.
+
+	выключить x server
+	systemctl list-units --type service --all      will list all services. For me it lists "gdm.service".
+	systemctl status gdm.service - статус
+	systemctl disable gdm.service - выкл 
+ 	systemctl enable gdm.service - вкл 
+	systemctl stop gdm.service - стоп
+ 	systemctl start gdm.service - старт 
+
+ToDo:
+	пересобрать inference чтобы в консольна не валились текстовые сообщения
+	купить мамеру 8 мп и попробовать с ней, купить USB Logitech C270 и тоже попробовать
+	выключить x ??? см выше как
+	сделать корпус
+	
+	[DONE] настроить статичный IP
+	[DONE] настроить сохранение IP - отличаются от Raspberry
+	[DONE] сделать gunicorn 
+	[DONE] настроить сработку только на person
+	[DONE] настроить GPIO на выход. 
+	[DONE] настроить GPIO на вход.
+	[DONE] сделать восстановление дефолтных IP по GPIO
+	[DONE] сделать автозапуск
+	[DONE] включить wdt
+	
