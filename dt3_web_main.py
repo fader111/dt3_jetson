@@ -1,5 +1,5 @@
 
-# -*- coding: utf-8 -*-
+''' Transport Detector with web interface '''
 import cProfile
 import sys, os, time, cv2, socket
 from flask import Flask, session, render_template, Response, request, json, jsonify, make_response
@@ -9,9 +9,10 @@ from multiprocessing.dummy import Process, Queue
 from threading import Timer
 #from camera_pi import Camera
 from RepeatedTimer_ import RepeatedTimer
-from image_proc import *
+from main_proc_dlib import *
 from conf_editor import *
 from get_net_settings import *
+
 
 import RPi.GPIO as GPIO
 
@@ -24,7 +25,7 @@ from datetime import datetime
 import requests
 # import logging
 
-path = '/home/a/dp2/'  # путь до папки проекта
+path = '/home/a/dt3_jetson/'  # путь до папки проекта
 
 ipStatus = {"ip": '192.168.0.100',
             "mask": '255.255.255.0',

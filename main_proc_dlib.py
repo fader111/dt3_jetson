@@ -310,5 +310,5 @@ def proc():
     cv2.destroyAllWindows()
 
 
-# if __name__ == "__main__":
-    # proc()
+if __name__ == "__main__":
+    proc()
