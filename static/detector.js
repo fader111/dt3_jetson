@@ -184,11 +184,12 @@
             var mainRect = r.rect(0, 0, W - 0, H/*-100*/).attr({fill: "#fff", opacity: 0}); //
             var mainRect2 = r.rect(0, 0, W - 0, H/*-100*/).attr({fill: "none", opacity: 0.3}); // только для отображения границ
             //console.log("editMode = ",editMode);
-            // сдвиг левого верхнего угла картинки, slice - для удаления "px" с конца
-            var leftCornerShiftX = document.getElementById('img_div').getBoundingClientRect().left;
+            // сдвиг левого верхнего угла картинки, slice - для удаления "px" с конца - старый вариант
             // var leftCornerShiftX = document.getElementById('centr_block').style.left.slice(0, -2);
-            var leftCornerShiftY = document.getElementById('img_div').getBoundingClientRect().top;
             // var leftCornerShiftY = document.getElementById('centr_block').style.top.slice(0, -2);
+            // новый
+            var leftCornerShiftX = Math.round(document.getElementById('img_div').getBoundingClientRect().left);
+            var leftCornerShiftY = Math.round(document.getElementById('img_div').getBoundingClientRect().top);
             console.log("leftCornerShiftX - ", leftCornerShiftX , "leftCornerShiftY", leftCornerShiftY);
             //polyFromServer = getPolyFromServerPHP(req); // забирает данные полигонов с сервера
             polyFromServer = getPolyFromServer(req); // забирает данные полигонов с сервера
@@ -353,12 +354,14 @@
                         .mousedown(function () {
                             if (editMode == 1) {
                                 //console.log("from интерн mdown: polygonNumber",polygonNumber);
+                                leftCornerShiftX = Math.round(document.getElementById('img_div').getBoundingClientRect().left);
+                                leftCornerShiftY = Math.round(document.getElementById('img_div').getBoundingClientRect().top);
                                 begin_path = this.attr("path");
                                 minx = Math.min.apply(null, [begin_path[0][1], begin_path[1][1], begin_path[2][1], begin_path[3][1]]); //минимальное число x в полигоне // это надо чтобы полигон за границы не выезжал
-                                maxx = Math.max.apply(null, [begin_path[0][1], begin_path[1][1], begin_path[2][1], begin_path[3][1]]); //максимальное число x в полигоне
+                                maxx = Math.max.apply((null), [begin_path[0][1], begin_path[1][1], begin_path[2][1], begin_path[3][1]]); //максимальное число x в полигоне
                                 miny = Math.min.apply(null, [begin_path[0][2], begin_path[1][2], begin_path[2][2], begin_path[3][2]]); //минимальное число y в полигоне
                                 maxy = Math.max.apply(null, [begin_path[0][2], begin_path[1][2], begin_path[2][2], begin_path[3][2]]); //максимальное число y в полигоне
-                                //console.log('minx',minx);
+                                // console.log('minx',minx, 'miny',miny, 'maxx',maxx,  'maxy',maxy);
                                 if (rects != null) rects.remove();
                                 if (arrows != null) arrows.remove();
                                 // выясняем на каком полигоне приземлились мышкой
@@ -402,6 +405,8 @@
                                     // создать квадратики по углам полигона
                                     var rec = rects.push(r.rect(path_[ii][1] - 10, path_[ii][2] - 10, 20, 20).attr({stroke: "red",fill: "yellow",opacity: 0.5}))
                                         .drag(function (dx, dy, x, y) { // таскать за квадратики по углам
+                                            leftCornerShiftX = Math.round(document.getElementById('img_div').getBoundingClientRect().left);
+                                            leftCornerShiftY = Math.round(document.getElementById('img_div').getBoundingClientRect().top);
                                             //internalFlag=1;
                                             if (arrows != null) arrows.remove(); // удаляем срелки направлений
                                             x = x - leftCornerShiftX;
@@ -560,6 +565,8 @@
             // обеспечивает функционал для случая добавления новых полигонов в режиме редактирования
             mainRect
                 .mousedown(function (i, x, y, cx, cy) {
+                    leftCornerShiftX = Math.round(document.getElementById('img_div').getBoundingClientRect().left);
+                    leftCornerShiftY = Math.round(document.getElementById('img_div').getBoundingClientRect().top);
                     if (editMode == 1) {
                         //console.log("даун на поле","leftCornerShiftX,Y = ",leftCornerShiftX," , ",leftCornerShiftY);
                         x0 = x - leftCornerShiftX;
@@ -580,6 +587,8 @@
                     }
                 })
                 .drag(function (dx, dy, x, y) { // создает новый полигон
+                    leftCornerShiftX = Math.round(document.getElementById('img_div').getBoundingClientRect().left);
+                    leftCornerShiftY = Math.round(document.getElementById('img_div').getBoundingClientRect().top);
                     if (editMode == 1) {
                         //console.log('x0 x',x0,x);
                         //console.log("from new drug: k=",k,"polygones length = ",polygones.length);

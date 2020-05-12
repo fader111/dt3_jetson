@@ -119,7 +119,7 @@ def proc():
     tracks = []  # list for Track class instances
     stop_ = False  # aux for detection break
 
-    while False:#True:
+    while True:
         # if memmon:
         # snapshot = tracemalloc.take_snapshot()
         # top_stats = snapshot.statistics('lineno')

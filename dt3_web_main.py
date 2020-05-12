@@ -1,5 +1,5 @@
 
-''' Transport Detector with web interface '''
+''' Transport Detector Type2 with web interface '''
 import cProfile
 import sys, os, time, cv2, socket
 from flask import Flask, session, render_template, Response, request, json, jsonify, make_response
@@ -109,6 +109,42 @@ def showStatusHub():
     return json.dumps(sendHubStatusToWeb())
 
 
+@app.route('/sendPolyToServer',
+           methods=['GET', 'POST'])  # это вызывается при нажатии на кнопку редактировать и отсылает полигоны на сервер
+def sendPolyToServer():
+    filePath = path + 'polygones.dat'
+    if request.method == 'POST':
+        print("request.get_data (poly)== ", request.get_data())
+        polygones = request.form["req"]
+        print('polygones=', polygones)
+        if "polygones" in polygones:  # так надо проверять, т.к. иногда чушь посылает.
+            print('polygones type IS RIGHT!')
+            try:
+                with open(filePath, 'w') as f:  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    f.write(polygones)  # Пишем данные полигонов в файл.
+                print('settings saved! path=', path)
+            except:
+                print(u"Не удалось сохранить файл polygones.dat")
+
+            return json.dumps('Polygones sent to server...')
+        print('polygones type IS WRONG!')
+        return json.dumps('Wrong data sent to server...')
+
+
+@app.route('/getPolyFromServer', methods=['GET', 'POST'])
+def getPolyFromServer():
+    # print('polygonesFilePath = ',polygonesFilePath)
+    polygones = None
+    filePath = path + 'polygones.dat'
+    print('filePath = ', path + 'polygones.dat')
+    try:
+        with open(filePath, 'r') as f:  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            polygones = f.read()  # Пишем данные полигонов в файл.
+    except:
+        print(u"Не удалось прочитать файл polygones.dat")
+    # print('считанные рамки = ',polygones)
+    # return json.dumps(ramki)
+    return json.dumps(polygones)
 def applyIPsettingsLinux(gate):
     """apply all the network settings, restart dcpcd service after changes on web page"""
     _comm = os.popen("sudo ip addr flush dev eth0 && sudo systemctl restart dhcpcd.service")
