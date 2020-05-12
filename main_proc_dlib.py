@@ -88,6 +88,14 @@ camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(wid
         videoconvert ! video/x-raw, format=(string)BGR ! appsink"
 
 
+def put_queue(queue, data):
+    # print('put', q_pict.qsize())
+    if not queue.qsize() > 3:  # помещать в очередь для web только если в ней не больше 3-х кадров ( статусов )
+        # нем смысла совать больше если web не работает и никто не смотрит, или если статус никто не выбирает,
+        # ато выжрет всю память однако
+        queue.put(data) 
+
+
 def proc():
     # timer to restart detector when main thread crashes
     # wdt_tmr = Timer(30, wdt_func) # отключено на время отладки
@@ -111,7 +119,7 @@ def proc():
     tracks = []  # list for Track class instances
     stop_ = False  # aux for detection break
 
-    while True:
+    while False:#True:
         # if memmon:
         # snapshot = tracemalloc.take_snapshot()
         # top_stats = snapshot.statistics('lineno')
@@ -285,8 +293,10 @@ def proc():
             frame_str = f'{int(tpf_midle)} msec/frm  tracks- {len(tracks)} '
             cv2.putText(wframe, frame_str, (15, 15),
                         cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255), 1)
-            cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
-            cv2.imshow("Frame", wframe)
+            # cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
+            # cv2.imshow("Frame", wframe)
+
+            put_queue(q_pict, wframe)  # put the picture for web in the picture Queue
             key = cv2.waitKey(key_time) & 0xFF
             # if the `ESC` key was pressed, break from the loop
             if key == 27:
@@ -301,7 +311,7 @@ def proc():
                 tracks = []  # kill all tracks pressing d
         if frm_number % 10 == 0:
             print(f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks)}')
-
+            
         # if memmon:
         #     print("[ Top 10 ]")
         #     for stat in top_stats[:10]:
@@ -310,5 +320,5 @@ def proc():
     cv2.destroyAllWindows()
 
 
-if __name__ == "__main__":
-    proc()
+# if __name__ == "__main__":
+    # proc()

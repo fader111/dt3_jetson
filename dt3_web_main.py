@@ -14,10 +14,10 @@ from conf_editor import *
 from get_net_settings import *
 
 
-import RPi.GPIO as GPIO
+# import RPi.GPIO as GPIO
 
-GPIO.setmode(GPIO.BOARD)
-GPIO.setup(7, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+# GPIO.setmode(GPIO.BOARD)
+# GPIO.setup(7, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 from werkzeug.contrib.fixers import ProxyFix
 from functools import wraps, update_wrapper
@@ -50,6 +50,19 @@ def index():
 def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
     return Response(gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+def gen():
+    """Video streaming generator function."""
+    global frame
+    while True:
+        # print('q_pict.qsize()', q_pict.qsize())
+        if not q_pict.empty():
+            frame = q_pict.get()
+        frame_ = cv2.imencode('.jpg', frame)[1].tostring()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_ + b'\r\n')
+        #time.sleep(0.1)
 
 
 @app.route('/sendSettingsToServer', methods=['GET', 'POST'])
@@ -120,19 +133,6 @@ def applyIPsettingsJetson(gate):
     gwComm.read()
 
 
-def gen():
-    """Video streaming generator function."""
-    global frame
-    while True:
-        # print('q_pict.qsize()', q_pict.qsize())
-        if not q_pict.empty():
-            frame = q_pict.get()
-        frame_ = cv2.imencode('.jpg', frame)[1].tostring()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_ + b'\r\n')
-        #time.sleep(0.1)
-
-
 def change_ip_on_host(ip, gate, fname='/etc/dhcpcd.conf'):  # 129.168.0.16/24 
     """ ONLY FOR RASPBERRY!! changes ip: edit /etc/dhcpcd.conf file and restart network """
     file_edit(fname, 'inform', ip)
@@ -154,7 +154,7 @@ def gpio_button_handler(channel):
     """ воостанавливает дефолтные настройки IP при замыкании пина 5 на землю"""
     # print ("сработка set_Default_IP_Settings!!!")
     ts = time.time()
-    while GPIO.input(7) == False:  # при замыкании кнопки
+    while 0:#GPIO.input(7) == False:  # при замыкании кнопки
         # print("false")
         time.sleep(1)
         if (time.time() - ts > 2):
@@ -188,7 +188,7 @@ def main_process():
 
 
 # в главном треде срабатывает вызов при нажатии на кнопку пин 5.
-GPIO.add_event_detect(7, GPIO.FALLING, callback=gpio_button_handler, bouncetime=100)
+# GPIO.add_event_detect(7, GPIO.FALLING, callback=gpio_button_handler, bouncetime=100)
 
 ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
             "gateway": get_gateway(),
@@ -204,10 +204,10 @@ rtUpdStatusForHub.start()
 
 frame = np.zeros((512,512,3), np.uint8) # пустая картинка при старте
 font = cv2.FONT_HERSHEY_SIMPLEX
-cv2.putText(frame,'wait...',(180,250), font, 2,(255,255,255),2,cv2.LINE_AA)
+cv2.putText(frame,'wait...',(180,250), font, 2,(255,255,255), 2, cv2.LINE_AA)
 
 main_proc = Process(target=main_process)
 main_proc.start()
 
 if __name__ == "__main__":
-    app.run(app.run(host='0.0.0.0', port=8080, debug=False, threaded=True, use_reloader=False))
+    app.run(app.run(host='0.0.0.0', port=8080, debug=True, threaded=True, use_reloader=True))

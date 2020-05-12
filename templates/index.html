@@ -1,118 +1,172 @@
 <html>
 <head>
     <meta charset="utf-8"/>
-    <title>Детектор пешеходов</title>
+    <title>Детектор транспорта</title>
+{#    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" media="screen">#}
+{#    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}" media="screen">#}
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.css') }}" media="screen">
+{#    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-theme.min.css') }}" media="screen">#}
+{#    <link rel="stylesheet" href="{{ url_for('static', filename='prettify.css') }}" media="screen">#}
+{#    <link rel="stylesheet" href="{{ url_for('static', filename='style_modal.css') }}" media="screen">#}
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <!--link rel="stylesheet" href="../style.css" media="all"-->
+    <script src="{{ url_for('static', filename='raphael.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='poly.js') }}"></script>
     <script type=text/javascript src="{{ url_for('static', filename='jquery.min.js') }}"></script>
     <script type=text/javascript src="{{ url_for('static', filename='bootstrap.min.js') }}"></script>
-	<link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
-	<script src="{{ url_for('static', filename='poly.js') }}"></script>
-	<script src="{{ url_for('static', filename='dp.js') }}"></script>
+    <script type=text/javascript src="{{ url_for('static', filename='detector.js') }}"></script>
+
 </head>
 <body>
 <div id="logo"><img src="{{ url_for('static', filename='logo.png') }}" style="width:100px;height:33px;margin-left:50px;position: absolute;"/></div>
-<h1 style="text-align: center; margin-bottom: 2px; font:22px Arial, Helvetica, sans-serif;font-weight:bold;position: relative;float:top">Детектор пешеходов - {{ ipStatus.ip }}</h1>
+<h1 style="text-align: center; margin-bottom: 2px; font:22px Arial, Helvetica, sans-serif;font-weight:bold;position: relative;float:top">
+  Детектор транспорта - {{ ipStatus.ip }}
+</h1>
+
+<!-- <div id="zeroPolyAlert" style="text-align: center; margin-bottom: 4px; font:12px Arial, Helvetica, sans-serif;font-weight:bold;"></div> -->
+<!-- <div id="editModeAlert" style="text-align: center; font:12px Arial, Helvetica, sans-serif;font-weight:bold;"></div> -->
+
 <!--центральный блок-->
-<div id="centr_block" style="text-align: center;float: top; top: 70px; left: 50px; width: 1000px" class="container" >
+<div id="centr_block" style="position: relative; text-align: center; top: 10px; left: 50px; width: 930px" class="container">
+  <!--div id="centr_block" style="position: relative; text-align: center;float: top; top: 10px; left: 50px; width: 950px"-->
+
     <!-- слой картинки -->
     <!--div id="img_div" style="float:left; top: 70px; left: 50px; width:800px;height:600px;position: absolute"-->
-	<div id="img_div" style="float:left; top: 10px; left: 50px; width:800px;height:600px;position: relative">
-		<!--div class="block1"-->
-		<!--img id="pict" style="width:100%;height:100%"/-->
-		<img src="{{ url_for('video_feed') }}" style="width:100%;height:100%">
-		<!--<img src="" style="vertical-align: middle; text-align: center;float:top;width:100%;height:100%">-->
-		<!--img id ="pict" style="width:100%;height:100%"/-->
-	</div>
+    <div id="img_div" style="float:left; top: 0px; left: 0px; width:800px; height:600px; position: absolute">
+      <!--div class="block1"-->
+      <!--img id="pict" style="width:100%;height:100%"/-->
+      <img src="{{ url_for('video_feed') }}" style="width:100%;height:100%">
+      <!--<img src="" style="vertical-align: middle; text-align: center;float:top;width:100%;height:100%">-->
+      <!--img id ="pict" style="width:100%;height:100%"/-->
+    </div>
 
-	<!--слой элементов управления справа от картинки-->
-	<div style="float:right; left: 1px; top: 10px; width:100px;height:100px;position: relative">
-		<!--&lt;!&ndash;слой с таблицей для показа сколько машин проехало за минуту и за час&ndash;&gt;-->
-		<!--<div id="tsNumberTable" style="float:top; width:100px; position: relative">-->
-		<!--</div>-->
+    <!-- слой рисования -->
+    <!--div id="holder" style="top: 10px; left: 50px; width:800px; height:600px; position: absolute"-->
+      <div id="holder" style="top: 0px; left: 0px; width:800px; height:600px; position: absolute">
+    </div>  
+    <!--слой элементов управления справа от картинки-->
+    <!-- <div style="float:right; left: 20px; width:100px;height:100px;position: relative"-->
+        <!--слой с таблицей для показа сколько машин проехало за минуту и за час-->
+        <!-- <div id="tsNumberTable" style="float:top; width:100px; position: relative">
+        </div>  -->
 
-		<!--кнопки справа от картинки -->
-		<div style="float:right; left: 1px; width:100px;height:100px;position: relative">
-			<!--<p><button style="width:178px" type="button" id="editButton" value="Редактировать" class="btn btn-primary"/>Редактировать</button></p>-->
-			<!--<p><button style="width:178px" type="button" id="delButton" value="Удалить все" class="btn btn-primary" disabled="true" />Удалить все</button></p>-->
-		{#    <input type="button" name="camSettingsButton" id="camSettingsButton" value="Настройки детектора" class="button"/><br>#}
-			<!-- Кнопка, вызывающее модальное окно -->
-			<p><a style="width:178px" href="#settings_modal" class="btn btn-primary" data-toggle="modal">Настройки детектора</a></p>
-			<a style="width:178px" href="#help_modal" class="btn btn-primary" data-toggle="modal">Справка</a><br><br>
-			<!--input type="button" name="helpButton" id="helpButton" value="Справка" class="button"/><br><br-->
-			<!--input name="inp1" type="text" value= "30"><br>
-			<input id="" name="btn2" style="visibility:visible;" type="submit" value="GO" class="button"/-->
-			<!--<span id="polyData" style="visibility:hidden; font:10px Arial, Helvetica, sans-serif;">hidden</span><br><br>-->
-			<span id="hub_Data" style="visibility:hidden; font:10px Arial, Helvetica, sans-serif;">hubData</span><br><br>
-			<!--img id ="pict2" style="width:50px;height:50px" title="Подсказка"-->
-		</div>
-	</div>
-	<br>
-	<div id="settings_modal" class="modal fade" style="display: none;">
-	  <div class="modal-dialog">
-		<div class="modal-content">
-		  <div class="modal-header">
-			<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-			<h4 class="modal-title">Настройки IP</h4>
-		  </div>
-		  <div class="modal-body">
-			  <!--<form method="post" id="settinsForm" onsubmit="return false;"></form>-->
-			  <!--<form method="post" id="settinsForm" onsubmit="return sendSettingsToServer();"></form>-->
-			  <!--рабочий вариант-->
-			  <form method="post" name="ip_form" id="settinsForm" ></form>
-			  <table class="table" style="text-align: left; font:14px Arial, Helvetica, sans-serif;" border="0" cellpadding="1" cellspacing="1">
-					<tbody>
-						<tr>
-							<td style="width:500px">IP адрес камеры/маска:</td>
-							<!--required pattern='#^[0-9]+$#'-->
-							<td><input style="width:140px" class="" form="settinsForm" id="ip_address" name="ip" type="text" value= "{{ ipStatus.ip }}"
-									pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}" required =""></td>
-						</tr>
-						<tr>
-							<td style="width:500px">IP адрес шлюза:</td>
-							<td><input style="width:140px" class="" form="settinsForm" id="ip_address_gateway" type="text" name="gateway" value= "{{ ipStatus.gateway }}"
-									pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
-						</tr>
-						<tr>
-							<td style="width:500px">IP адрес концентратора:</td>
-							<td><input style="width:140px" class="" form="settinsForm" id="ip_address_hub" type="text" name="hub" value= "{{ ipStatus.hub }}"
-									pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
-						</tr>
-						<tr>
-							<td></td><td></td>
-						</tr>
-					</tbody>
-				</table>
+    <!--кнопки справа от картинки -->
+    <!-- <div style="float:top ; margin-top: 20px; position: relative;"> -->
+    <div style="float: right; left: 1px; top: 0px; width:100px;height:100px;position: relative">
+        <p><button style="width:178px" type="button" id="editButton" value="Редактировать" class="btn btn-primary"/>Редактировать</button></p>
+        <p><button style="width:178px" type="button" id="delButton" value="Удалить все" class="btn btn-primary" disabled="true" />Удалить все</button></p>
+    {#    <input type="button" name="camSettingsButton" id="camSettingsButton" value="Настройки детектора" class="button"/><br>#}
+        <!-- Кнопка, вызывающее модальное окно -->
+        <p><a style="width:178px" href="#settings_modal" class="btn btn-primary" data-toggle="modal">Настройки детектора</a></p>
+        <a style="width:178px" href="#help_modal" class="btn btn-primary" data-toggle="modal">Справка</a><br><br>
+        <!--input type="button" name="helpButton" id="helpButton" value="Справка" class="button"/><br><br-->
+        <!--input name="inp1" type="text" value= "30"><br>
+        <input id="" name="btn2" style="visibility:visible;" type="submit" value="GO" class="button"/-->
+        <span id="polyData" style="visibility:hidden; font:10px Arial, Helvetica, sans-serif;">hidden</span><br><br>
+        <span id="hub_Data" style="visibility:hidden; font:10px Arial, Helvetica, sans-serif;">hubData</span><br><br>
+        <!--img id ="pict2" style="width:50px;height:50px" title="Подсказка"-->
+    </div>
+    <br>
+    <div id="settings_modal" class="modal fade" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+            <h4 class="modal-title">Настройки IP</h4>
+          </div>
+          <div class="modal-body">
+              <form method="post" id="settinsForm"></form>
+              <table class="table" style="text-align: left; font:14px Arial, Helvetica, sans-serif;" border="0" cellpadding="1" cellspacing="1">
+            <tbody>
+              <tr>
+                            <td style="width:500px">IP адрес камеры:</td>
+                            <!--required pattern='#^[0-9]+$#'-->
+                <td><input style="width:100px" class="" form="settinsForm" id="ip_address" name="ip" type="text" value= "{{ ipStatus.ip }}"
+                                    pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
+              </tr>
+              <tr>
+                <td style="width:500px">Маска подсети:</td>
+                <td><input style="width:100px" class="" form="settinsForm" id="ip_netmask" type="text" name="mask" value= "{{ ipStatus.mask }}"
+                                    pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
+              </tr>
+              <tr>
+                <td style="width:500px">IP адрес шлюза:</td>
+                <td><input style="width:100px" class="" form="settinsForm" id="ip_address_gateway" type="text" name="gateway" value= "{{ ipStatus.gateway }}"
+                                    pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
+              </tr>
+              <tr>
+                <td style="width:500px">IP адрес концентратора:</td>
+                <td><input style="width:100px" class="" form="settinsForm" id="ip_address_hub" type="text" name="hub" value= "{{ ipStatus.hub }}"
+                                    pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
+              </tr>
+                        <tr>
+                            <td></td><td></td>
+                        </tr>
+            </tbody>
+          </table>
 
-		  </div>
+          </div>
+          <div class="modal-header">
+            <h4 class="modal-title">Параметры детектирования</h4>
+          </div>
+          <div class="modal-body">
 
-		  <div class="modal-footer">
-			<button type="button" class="btn btn-default" data-dismiss="modal">Закрыть</button>
-			  <!--рабочий вариант-->
-			<button	type="button" class="btn btn-primary" onclick="formDataHandler();">Сохранить изменения</button>
-			<!--<input	type="submit" form="settinsForm" class="btn btn-primary" onclick="sendSettingsToServer();" value = "Сохранить изменения"  />-->
-			<!--<input	type="submit" form="settinsForm" class="btn btn-primary" value = "Сохранить изменения"  />-->
-		  </div>
-		</div>
-	  </div>
-	</div>
-	<div id="help_modal" class="modal fade" style="display: none;">
-	  <div class="modal-dialog">
-		<div class="modal-content">
-		  <div class="modal-header">
-			<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-			<h4 class="modal-title">Справка</h4>
-		  </div>
-		  <div class="modal-body" style="font:12px Arial, Helvetica, sans-serif">
-			<p align="left">	Кнопка "Настройки детектора" выводит таблицу параметров, которые задают настройки IP - адрес камеры, маску подсети, адрес шлюза по умолчанию, а также IP адрес концентратора.
-				Измените параметры при необходимости, сохраните их кнопкой "Сохранить изменения" и закройте окно.</p>
-			<p align="left">Для сброса в заводские настройки IP, а также для более подробной информации, смотри руководство по эксплуатации.</p>
-		  </div>
-		  <div class="modal-footer">
-			<button type="button" class="btn btn-default" data-dismiss="modal">Закрыть</button>
-		  </div>
-		</div>
-	  </div>
-	</div>
+          <table class="table" style="text-align: left; font:14px Arial, Helvetica, sans-serif;" border="0" cellpadding="1" cellspacing="1">
+            <tbody>
+              <tr>
+                <td style="width:500px">Порог срабатывания детектора фона, по умолчанию 20</td>
+                            <!--required pattern='#^[0-9]+$#'-->
+              </tr>
+              <tr>
+                <td style="width:500px">Гистерезис срабатывания детектора фона, по умолчанию 10</td>
+              </tr>
+              <tr>
+                <td style="width:500px">Порог срабатывания детектора движения, по умолчанию 30</td>
+              </tr>
+              <tr>
+                <td style="width:500px">Гистерезис срабатывания детектора движения, по умолчанию 25</td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Закрыть</button>
+            <button type="button" class="btn btn-primary" onclick="sendSettingsToServer();">Сохранить изменения</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="help_modal" class="modal fade" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+            <h4 class="modal-title">Справка</h4>
+          </div>
+          <div class="modal-body" style="font:12px Arial, Helvetica, sans-serif">
+            <p>Для задания зон детектирования нажмите кнопку "Редактировать". Нарисуйте мышкой прямоугольник левым кликом и перетаскиванием. Измените его форму кликая и перетаскивая желтые квадраты по углам полигона.
+                Двигайте полигон целиком кликом на нем и перетаскиванием. Аналогичным образом можно создать до 4-х полигонов на одну камеру. Двойной клик удаляет полигон.
+                Номер полигона добавляется и удаляется автоматически. Редактировать можно как новые, так и ранее созданные полигоны.</p>
+                <p>Задайте направление движения кликом у края получившейся зоны детектирования. Стрелка покажет направление движения транспортного средства (ТС) в зоне. Повторный клик удалит направление.
+                Детектироваться будут только те ТС, направления движения которых совпадают с заданными для этой зоны. Направлений может быть до 4-х. Если направления не заданы, или заданы все 4, детектируется любое движение в зоне.
+                Включенный, сработавший детектор отображается зеленым цветом, несработавший - красным. </p>
+                <p>Тип созданной зоны детектирования может быть "Проезд", он обозначается символом "П" в центре, или "Остановка" - "О".
+                Кликом на символе можно менять тип зоны. "Проезд" - означает детектирование движения - есть движение, детектор включился, нет - детектор выключился. "Остановка" - сравнивает текущее состояние зоны с фоном на котором нет
+                транспортных средств. Если автомобиль есть в зоне, не важно движется он или стоит, детектор сработает и выключится, когда автомобиль покинет зону. Сразу после включения камеры, фон обучается в течение 2-х минут.
+                Во время обучения все зоны типа "Остановка" работают как детекторы движения, постепенно по мере обучения начинают реагировать на остановку ТС. Обучение фона продолжается в течение всего времени работы детектора,
+                позволяя корректно отрабатывать изменения освещенности в кадре, снег, дождь, другие долговременные изменения фона. Сохраните изменения нажатием кнопки "Сохранить".
+                <p>Кнопка "Удалить все" удаляет все полигоны, работает только в режиме редактирования.
+                Кнопка "Настройки детектора" выводит таблицу параметров, которые задают настройки IP - адрес камеры, маску подсети, адрес шлюза по умолчанию, а также IP адрес концентратора.
+                Ниже задаются: порог срабатывания зон в режиме проезда и остановки, а также гистерезис в обоих режимах. Измените параметры при необходимости, сохраните их
+                кнопкой "Сохранить изменения" и закройте окно.</p>
+                <p>Для сброса в заводские настройки IP  и подсчета количества проехавших ТС, а также для более подробной информации, смотри руководство по эксплуатации.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Закрыть</button>
+          </div>
+        </div>
+      </div>
+    </div>
 </div>
 </body>
 </html>
