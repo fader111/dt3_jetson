@@ -13,6 +13,7 @@ import os
 import math
 import cv2
 import numpy as np
+import json
 from RepeatedTimer_ import RepeatedTimer
 from common_tracker import *
 from iou import bb_intersection_over_union
@@ -26,6 +27,7 @@ from dlib import correlation_tracker
 
 q_pict = Queue(maxsize=5)  # queue for web picts
 q_status = Queue(maxsize=5)  # queue for web status
+q_ramki = Queue(maxsize=5)  # очередь где лежат рамки
 
 # jetson inference networks list
 network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
@@ -36,7 +38,7 @@ network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
                "googlenet"         # 5 also good
                ]
 
-network = network_lst[0]
+network = network_lst[1]
 
 threshold = 0.2  # for jetson inference object detection
 width = 1920  # 640
@@ -93,7 +95,7 @@ def put_queue(queue, data):
     if not queue.qsize() > 3:  # помещать в очередь для web только если в ней не больше 3-х кадров ( статусов )
         # нем смысла совать больше если web не работает и никто не смотрит, или если статус никто не выбирает,
         # ато выжрет всю память однако
-        queue.put(data) 
+        queue.put(data)
 
 
 def proc():
@@ -115,6 +117,9 @@ def proc():
     key_time = 1
     new_tr_number = 0  # for tracks numeration
     frm_number = 0
+    polygones = {} # json c рамками и направлениями
+    ramki_scaled = [] # ramki scaled
+    ramki_directions = [] # ramki directions
     bboxes = []
     tracks = []  # list for Track class instances
     stop_ = False  # aux for detection break
@@ -186,7 +191,7 @@ def proc():
             # tss = time.time() # 8-14 w/o/ stdout on video
 #            frame = cv2.cvtColor(frame.astype(np.uint8), cv2.COLOR_RGBA2RGB)
 
-            for detection in detections:
+            for detection in []:#detections:
                 # print('  class', detection.Area, detection.ClassID)
                 # print('detection', detection)
                 x1 = int(detection.Left)
@@ -268,12 +273,12 @@ def proc():
             fps = str(round(net.GetNetworkFPS()))
         else:
             fps = 'inf...'
-        resolution_str_ = str(width) + 'x' + str(height)
-        tot_elapsed_time = str(round((time.time()-tss), 2))
-        res_string = resolution_str_+'  fps-' + fps + \
-            ' elps ' + tot_elapsed_time + ' net-' + network
-        cv2.putText(wframe, res_string, (15, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, 255, 1)
+        # resolution_str_ = str(width) + 'x' + str(height)
+        # tot_elapsed_time = str(round((time.time()-tss), 2))
+        # res_string = resolution_str_+'  fps-' + fps + \
+            # ' elps ' + tot_elapsed_time + ' net-' + network
+        # cv2.putText(wframe, res_string, (15, 30),
+                    # cv2.FONT_HERSHEY_SIMPLEX, 0.5, 255, 1)
         # draw current time
         # os.popen("date").read()[:-1] # eats fckng 120 ms in inference!!!! 120 Karl!!!!
         # cv2.putText(wframe, time_str, (15, 15),
@@ -282,17 +287,52 @@ def proc():
         # put_queue(q_status, GREEN_TAG)
         
         # calculate time per frame in msec
+
+        # draw detecting zones q_ramki - Queue, if the are new detecting areas, they are in 
+        # this queue
+        if not q_ramki.empty():
+            # here it comes as a string, so convert
+            polygones = json.loads(q_ramki.get()) # not zoomed right 
+            # calculate polygones coordinates in scale
+            ramki_scaled = []
+            ramki_directions = []
+            y_size, x_size = wframe.shape[:2]
+            if ("polygones") in polygones:
+                x_factor, y_factor = polygones["frame"]
+                for polygon in polygones["polygones"]:
+                    polygon_sc = [[x*x_size//x_factor, y*y_size//y_factor] for x,y in polygon]
+                    ramki_scaled.append(polygon_sc)
+                print(f'ramki scaled {ramki_scaled}')
+                ramki_directions = polygones["ramkiDirections"]
+                print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
+            
+                    
+
+        cv2.polylines(wframe, np.array(ramki_scaled, np.int32), 1, 1 * 255, 2)
+        # draw arrows for polygones
+        for directions in ramki_directions:
+            for arrow in directions:
+                if arrow:
+                    #kernels = ...
+                    #cv2.polylines(wframe, np.array(ramki_scaled, np.int32), 1, 1 * 255, 2)
+                    pass
+
+
         tpf = int((time.time()-tss)*1000)
         
         if frm_number < 5:
             tpf_midle = tpf
-        tpf_midle = (tpf_midle + ((tpf)-tpf_midle)/frm_number)
+        elif frm_number > 200:
+            tpf_midle = (tpf_midle + ((tpf)-tpf_midle)/200)
+        else:
+            tpf_midle = (tpf_midle + ((tpf)-tpf_midle)/frm_number)
 
         if visual:
             # img = cv2.resize(img, (800, 600))
-            frame_str = f'{int(tpf_midle)} msec/frm  tracks- {len(tracks)} '
+            frame_str = f'{int(tpf_midle)} ms/f tr-{len(tracks)} ' + \
+                        f'{width}x{height} fps{fps} {network}'
             cv2.putText(wframe, frame_str, (15, 15),
-                        cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255), 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             # cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
             # cv2.imshow("Frame", wframe)
 
@@ -316,6 +356,8 @@ def proc():
         #     print("[ Top 10 ]")
         #     for stat in top_stats[:10]:
         #         print(stat)
+
+
     cap.release()
     cv2.destroyAllWindows()
 

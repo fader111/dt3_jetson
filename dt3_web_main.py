@@ -27,13 +27,12 @@ import requests
 
 path = '/home/a/dt3_jetson/'  # путь до папки проекта
 
-ipStatus = {"ip": '192.168.0.100',
-            "mask": '255.255.255.0',
+ipStatus = {"ip": '192.168.0.100/24',
             "gateway": '192.168.0.1',
             "hub": '192.168.0.39'
             }
 det_status = [0] # массив для сохранения статуса детектора (пока 1 значение) [GREEN_TAG] из вычислительного потока
-
+polygones = {} # рамки со всеми потрохами
 app = Flask(__name__)
 
 
@@ -109,22 +108,25 @@ def showStatusHub():
     return json.dumps(sendHubStatusToWeb())
 
 
-@app.route('/sendPolyToServer',
-           methods=['GET', 'POST'])  # это вызывается при нажатии на кнопку редактировать и отсылает полигоны на сервер
+@app.route('/sendPolyToServer', methods=['GET', 'POST'])
 def sendPolyToServer():
+    '''calls any time, when polygones change in web client'''
     filePath = path + 'polygones.dat'
     if request.method == 'POST':
         print("request.get_data (poly)== ", request.get_data())
-        polygones = request.form["req"]
-        print('polygones=', polygones)
-        if "polygones" in polygones:  # так надо проверять, т.к. иногда чушь посылает.
+        poly = request.form["req"]
+        print('polygones=', poly)
+        if "polygones" in poly:  # так надо проверять, т.к. иногда чушь посылает.
             print('polygones type IS RIGHT!')
             try:
-                with open(filePath, 'w') as f:  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                    f.write(polygones)  # Пишем данные полигонов в файл.
+                with open(filePath, 'w') as f:
+                    f.write(poly)  # Пишем данные полигонов в файл.
                 print('settings saved! path=', path)
+                '''updates polygones according to the changes'''
+                updatePoly(poly)
             except:
                 print(u"Не удалось сохранить файл polygones.dat")
+                return json.dumps("Polygones wasn't sent to server...")
 
             return json.dumps('Polygones sent to server...')
         print('polygones type IS WRONG!')
@@ -134,17 +136,30 @@ def sendPolyToServer():
 @app.route('/getPolyFromServer', methods=['GET', 'POST'])
 def getPolyFromServer():
     # print('polygonesFilePath = ',polygonesFilePath)
-    polygones = None
+    poly = None
     filePath = path + 'polygones.dat'
     print('filePath = ', path + 'polygones.dat')
     try:
         with open(filePath, 'r') as f:  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            polygones = f.read()  # Пишем данные полигонов в файл.
+            poly = f.read()  # вытаскиваем рамки из файла
     except:
         print(u"Не удалось прочитать файл polygones.dat")
-    # print('считанные рамки = ',polygones)
+    # print('считанные рамки = ', poly)
     # return json.dumps(ramki)
-    return json.dumps(polygones)
+    updatePoly(poly)
+    return json.dumps(poly)
+
+
+def updatePoly(poly):
+    ''' Updates polygones, when changes come from web client'''
+    polygones = poly
+    # print(f'polygones {polygones}')
+    while not q_ramki.empty():  # перед помещением в очередь чистим ее
+        q_ramki.get()
+    if not q_ramki.qsize() >= q_ramki.maxsize:
+        q_ramki.put(poly)  # обновили очередь рамок.
+
+
 def applyIPsettingsLinux(gate):
     """apply all the network settings, restart dcpcd service after changes on web page"""
     _comm = os.popen("sudo ip addr flush dev eth0 && sudo systemctl restart dhcpcd.service")
@@ -205,7 +220,7 @@ def sendDetStatusToHub():  # передача состояний рамок на
     hubAddress = ipStatus['hub']
     # print('hubAddress = ',hubAddress)
     addrString = 'http://' + hubAddress + '/detect'
-    if q_status.qsize()>0:
+    if q_status.qsize() > 0:
         det_status[0] = q_status.get()
     # print("addrString", addrString, "detST", det_status)
     try:
@@ -246,4 +261,4 @@ main_proc = Process(target=main_process)
 main_proc.start()
 
 if __name__ == "__main__":
-    app.run(app.run(host='0.0.0.0', port=8080, debug=True, threaded=True, use_reloader=True))
+    app.run(app.run(host='0.0.0.0', port=8080, debug=False, threaded=True, use_reloader=False))
