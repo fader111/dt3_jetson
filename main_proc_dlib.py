@@ -302,9 +302,9 @@ def proc():
                 for polygon in polygones["polygones"]:
                     polygon_sc = [[x*x_size//x_factor, y*y_size//y_factor] for x,y in polygon]
                     ramki_scaled.append(polygon_sc)
-                print(f'ramki scaled {ramki_scaled}')
+                # print(f'ramki scaled {ramki_scaled}')
                 ramki_directions = polygones["ramkiDirections"]
-                print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
+                # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
             
                     
 
