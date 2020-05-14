@@ -205,7 +205,7 @@
             function dirsPath(path) {
                var arrowsPath=[[[],[],[]],[[],[],[]],[[],[],[]],[[],[],[]]];
 //                console.log(path[0][1]);
-                for (polyKernel=0;polyKernel<4;polyKernel++){ //перебираем по всем 4-м углам полигона начиная с левого верхнего, создавая 4 стрелки
+                for (мдс=0;polyKernel<4;polyKernel++){ //перебираем по всем 4-м углам полигона начиная с левого верхнего, создавая 4 стрелки
                     x1=arrowsPath[polyKernel][0][0] = path[polyKernel][1];          // координата x 1 угла стрелки совпадает с x первого угла полигона
                     y1=arrowsPath[polyKernel][0][1] = path[polyKernel][2];          // то-же для y
                     if (polyKernel<3) {                                               // для третьего угла полигона второй угол рамки будет нулевой угол полигона

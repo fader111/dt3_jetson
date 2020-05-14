@@ -313,6 +313,7 @@ def proc():
         for directions in ramki_directions:
             for arrow in directions:
                 if arrow:
+                    
                     #kernels = ...
                     #cv2.polylines(wframe, np.array(ramki_scaled, np.int32), 1, 1 * 255, 2)
                     pass

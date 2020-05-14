@@ -70,7 +70,7 @@
             "name": "Python: Current File (External Terminal)",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
+            "program": "/home/a/dt3_jetson/dt3_web_main.py",
             "console": "externalTerminal"
         }
     ]
