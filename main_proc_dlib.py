@@ -122,6 +122,7 @@ def proc():
     ramki_directions = [] # ramki directions
     bboxes = []
     tracks = []  # list for Track class instances
+    arrows = [] # arrows of polygones path
     stop_ = False  # aux for detection break
 
     while True:
@@ -296,28 +297,28 @@ def proc():
             # calculate polygones coordinates in scale
             ramki_scaled = []
             ramki_directions = []
+            arrows = []
             y_size, x_size = wframe.shape[:2]
             if ("polygones") in polygones:
                 x_factor, y_factor = polygones["frame"]
                 for polygon in polygones["polygones"]:
                     polygon_sc = [[x*x_size//x_factor, y*y_size//y_factor] for x,y in polygon]
                     ramki_scaled.append(polygon_sc)
+                    # fill up the arrows list
+                    arrows.append(arrows_path(polygon_sc, y_size))
                 # print(f'ramki scaled {ramki_scaled}')
                 ramki_directions = polygones["ramkiDirections"]
                 # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
-            
-                    
 
         cv2.polylines(wframe, np.array(ramki_scaled, np.int32), 1, 1 * 255, 2)
+        
         # draw arrows for polygones
-        for directions in ramki_directions:
-            for arrow in directions:
-                if arrow:
-                    
-                    #kernels = ...
-                    #cv2.polylines(wframe, np.array(ramki_scaled, np.int32), 1, 1 * 255, 2)
-                    pass
-
+        for i, poly in enumerate(arrows):
+            for j, arrow in enumerate(poly):
+                if ramki_directions[i][j] == 1:
+                    # cv2.polylines(frame, np.array(item), 1, red, 0)
+                    # print('arrow',[arrow])
+                    cv2.polylines(frame, np.array([arrow]), 1, blue, 1)
 
         tpf = int((time.time()-tss)*1000)
         
