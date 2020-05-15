@@ -92,79 +92,82 @@
                     y34 = (y3 + y4) / 2;
                     y41 = (y4 + y1) / 2;
 
-                    var np = nums_poly.push(r.text((x12 + x34) / 2 - 12, (y23 + y41) / 2, text).attr(attr));
+                    var np = nums_poly.push(r.text((x12 + x34) / 2 /*- 12*/, (y23 + y41) / 2, text).attr(attr));
                 }
             }
             // отображает режим работы рамки 0(П) - присутствие, 1(О) - остановка
-            function assygnPolygonMode() {
-                var internFlag = 0;
-                modes_poly.remove(); // при каждом вызове сначала удаляем все режимы рамок, иначе их призраки остаются на экране
-                for (i = modes_poly.length - 1; i >= 0; i--)
-                    modes_poly.splice(i, 1); // это тоже для удаления в дополнение к тому что выше, иначе не удаляется
-                var attr = {font: "25px Helvetica", opacity: 0.7, fill: "yellow", number: "number"};
-                // если на сервере ничего нет, задаем пустые рамки
-                if (ramkiModes == undefined) {
-                    text = '-П';
-                    ramkiModes = new Array(polygones.length);
-                    for (ii = 0; ii < polygones.length; ii++)
-                        ramkiModes[ii] = 0;
-                }
-                for (ii = 0; ii < polygones.length; ii++) {
-                    //эта штука просто подготавливает текст для картинки.
-                    if (ramkiModes[ii] > 0)
-                        text = '-О';
-                    else
-                        text = '-П';
-                    {
-                        x1 = polygones[ii].attr("path")[0][1]; //тут фиксируются в переменных координаты точек полигона
-                        y1 = polygones[ii].attr("path")[0][2];
-                        x2 = polygones[ii].attr("path")[1][1];
-                        y2 = polygones[ii].attr("path")[1][2];
-                        x3 = polygones[ii].attr("path")[2][1];
-                        y3 = polygones[ii].attr("path")[2][2];
-                        x4 = polygones[ii].attr("path")[3][1];
-                        y4 = polygones[ii].attr("path")[3][2];
+            function assygnPolygonMode()
+            {
+            //     var internFlag = 0;
+            //     modes_poly.remove(); // при каждом вызове сначала удаляем все режимы рамок, иначе их призраки остаются на экране
+            //     for (i = modes_poly.length - 1; i >= 0; i--)
+            //         modes_poly.splice(i, 1); // это тоже для удаления в дополнение к тому что выше, иначе не удаляется
+            //     var attr = {font: "25px Helvetica", opacity: 0.7, fill: "yellow", number: "number"};
+            //     // если на сервере ничего нет, задаем пустые рамки
+            //     // if (ramkiModes == undefined) {
+            //         // text = '-П';
+            //         // ramkiModes = new Array(polygones.length);
+            //         // for (ii = 0; ii < polygones.length; ii++)
+            //             // ramkiModes[ii] = 0;
+            //     // }
+            //     for (ii = 0; ii < polygones.length; ii++) {
+            //         //эта штука просто подготавливает текст для картинки.
+            //         if (ramkiModes[ii] > 0){
+            //             // text = '-О';
+            //         }
+            //         else
+            //             // text = '';//'-П';
+            //         {
+            //             x1 = polygones[ii].attr("path")[0][1]; //тут фиксируются в переменных координаты точек полигона
+            //             y1 = polygones[ii].attr("path")[0][2];
+            //             x2 = polygones[ii].attr("path")[1][1];
+            //             y2 = polygones[ii].attr("path")[1][2];
+            //             x3 = polygones[ii].attr("path")[2][1];
+            //             y3 = polygones[ii].attr("path")[2][2];
+            //             x4 = polygones[ii].attr("path")[3][1];
+            //             y4 = polygones[ii].attr("path")[3][2];
 
-                        x12 = (x1 + x2) / 2; // координаты проекций середины
-                        x23 = (x2 + x3) / 2;
-                        x34 = (x3 + x4) / 2;
-                        x41 = (x4 + x1) / 2;
-                        y12 = (y1 + y2) / 2;
-                        y23 = (y2 + y3) / 2;
-                        y34 = (y3 + y4) / 2;
-                        y41 = (y4 + y1) / 2;
-                    }
-                    var mp = modes_poly.push(r.text((x12 + x34) / 2 + 9, (y23 + y41) / 2, text).attr(attr))
-                        .mousedown(function () {
-                            modes_polyNumber = null;
-                            for (l = 0; l < modes_poly.length; l++) { // определяем в какой элемент ткнули мышой соспоставляя координаты текущего с каждым, номер совпавшего запоминаем
-                                if (modes_poly[l].attr("x") == this.attr("x") & modes_poly[l].attr("y") == this.attr("y"))
-                                    modes_polyNumber = l;
-                            }
-                            if (editMode == 1) {
-                                if (internFlag == 0 & this.attr("text") == '-П') {
-                                    this.attr({"text": "-О"});//this.attr("text")=='О';
-                                    ramkiModes[modes_polyNumber] = 1;
-                                }
-                                else if (internFlag == 0) {
-                                    this.attr({"text": "-П"});
-                                    ramkiModes[modes_polyNumber] = 0;
-                                }
-                                internFlag = 1;
-                            }
-                            else
-                                notEditModeAlert();
-                        })
-                        .mouseup(function () {
-                            req = convertPolyToString(polygones, W, H, modes_poly,ramkiArrows); // req - строка состояния, которая отображает все статусы полигонов
-                            sendPolyToServer(req);
-                            internFlag = 0; //эта затычка нужна потому, что .mousedown вызывается несколько раз при однократном нажатии(хз почему)
-                        })
-                        .mouseover(function () {
-                            if (editMode == 1)
-                                this.node.style.cursor = "pointer";
-                        })
-                }
+            //             x12 = (x1 + x2) / 2; // координаты проекций середины
+            //             x23 = (x2 + x3) / 2;
+            //             x34 = (x3 + x4) / 2;
+            //             x41 = (x4 + x1) / 2;
+            //             y12 = (y1 + y2) / 2;
+            //             y23 = (y2 + y3) / 2;
+            //             y34 = (y3 + y4) / 2;
+            //             y41 = (y4 + y1) / 2;
+            //         }
+            //         // var mp = modes_poly.push(r.text((x12 + x34) / 2 + 9, (y23 + y41) / 2, text).attr(attr))
+            //         //     .mousedown(function () {
+            //         //         modes_polyNumber = null;
+            //         //         for (l = 0; l < modes_poly.length; l++) { // определяем в какой элемент ткнули мышой соспоставляя координаты текущего с каждым, номер совпавшего запоминаем
+            //         //             if (modes_poly[l].attr("x") == this.attr("x") & modes_poly[l].attr("y") == this.attr("y"))
+            //         //                 modes_polyNumber = l;
+            //         //         }
+            //         //         if (editMode == 1) {
+            //         //             // if (internFlag == 0 & this.attr("text") == '-П') 
+            //         //             // {
+            //         //                 // this.attr({"text": "-О"});//this.attr("text")=='О';
+            //         //                 // ramkiModes[modes_polyNumber] = 1;
+            //         //             // }
+            //         //             // else if (internFlag == 0) {
+            //         //                 // this.attr({"text": "-П"});
+            //         //                 // ramkiModes[modes_polyNumber] = 0;
+            //         //             // }
+            //         //             internFlag = 1;
+            //         //         }
+            //         //         else
+            //         //             notEditModeAlert();
+            //         //     })
+            //         //     .mouseup(function () {
+            //         //         req = convertPolyToString(polygones, W, H, modes_poly,ramkiArrows); // req - строка состояния, которая отображает все статусы полигонов
+            //         //         sendPolyToServer(req);
+            //         //         internFlag = 0; //эта затычка нужна потому, что .mousedown вызывается несколько раз при однократном нажатии(хз почему)
+            //         //     })
+            //         //     .mouseover(function () {
+            //         //         if (editMode == 1)
+            //         //             this.node.style.cursor = "pointer";
+            //         //     })
+            //     }
                 return 0;
             }
 			// ф-ция расставляет стрелки всех полигонов на экране. анализируя задание - массив ramkiArrows.
