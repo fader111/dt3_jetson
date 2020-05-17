@@ -20,6 +20,7 @@ from iou import bb_intersection_over_union
 # from track_iou_kalman_cv2 import Track
 from track_dlib import Track
 from dlib import correlation_tracker
+from shapely.geometry import Polygon, box
 # import Jetson.GPIO as GPIO
 
 # cascade_path = 'vehicles_cascadeLBP_w25_h25_p2572_n58652_neg_roof.xml'
@@ -41,6 +42,7 @@ network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
 network = network_lst[1]
 
 threshold = 0.2  # for jetson inference object detection
+iou_tresh_perc = 30  # tresh for cnn detection bbox and car detecting zone intersection in percents
 width = 1920  # 640
 height = 1080  # 480
 # camera_src = '/dev/video1'  # for USB
@@ -64,7 +66,7 @@ video_src = "/home/a/Videos/U524806_3.avi"
 # video_src = "G:/fotovideo/video_src/usb2.avi"
 
 # True - camera, False - video file /80ms per frame on camera, 149 on video
-USE_CAMERA = False
+USE_CAMERA = 1 #False
 USE_GAMMA = False  # True - for night video
 
 bboxes = []  # bbox's of each frame
@@ -119,6 +121,7 @@ def proc():
     frm_number = 0
     polygones = {} # json c рамками и направлениями
     ramki_scaled = [] # ramki scaled
+    ramki_colors = [] # ramki colors
     ramki_directions = [] # ramki directions
     bboxes = []
     tracks = []  # list for Track class instances
@@ -160,7 +163,7 @@ def proc():
 
         # give roi. Roi cuted upper part of frame
         up_bord = int(0.2*height)
-        img_c = img[up_bord:height, 0:width]
+        img_c = img#[up_bord:height, 0:width]
 
         # img_c = img_c[0:height, 0:int(width/5)]
 
@@ -192,7 +195,7 @@ def proc():
             # tss = time.time() # 8-14 w/o/ stdout on video
 #            frame = cv2.cvtColor(frame.astype(np.uint8), cv2.COLOR_RGBA2RGB)
 
-            for detection in []:#detections:
+            for detection in detections:
                 # print('  class', detection.Area, detection.ClassID)
                 # print('detection', detection)
                 x1 = int(detection.Left)
@@ -297,28 +300,58 @@ def proc():
             # calculate polygones coordinates in scale
             ramki_scaled = []
             ramki_directions = []
+            ramki_colors = []
             arrows = []
             y_size, x_size = wframe.shape[:2]
             if ("polygones") in polygones:
                 x_factor, y_factor = polygones["frame"]
                 for polygon in polygones["polygones"]:
-                    polygon_sc = [[x*x_size//x_factor, y*y_size//y_factor] for x,y in polygon]
+                    polygon_sc = [[x*x_size//x_factor, y*y_size//y_factor] for x, y in polygon]
                     ramki_scaled.append(polygon_sc)
+                    ramki_colors.append(0)
                     # fill up the arrows list
                     arrows.append(arrows_path(polygon_sc, y_size))
                 # print(f'ramki scaled {ramki_scaled}')
                 ramki_directions = polygones["ramkiDirections"]
                 # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
-
-        cv2.polylines(wframe, np.array(ramki_scaled, np.int32), 1, 1 * 255, 2)
         
+
+        # if any track point is inside the detecting zone - change it's state to On.
+        for i , ramka in enumerate(ramki_scaled):
+            for track in tracks: 
+
+                # ext = [(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)]
+                # int = [(1, 0), (0.5, 0.5), (1, 1), (1.5, 0.5), (1, 0)][::-1]
+                # polygon = Polygon(ext, [int])
+                # polygon = Polygon(ext)
+
+                # d = a.difference(polygon)
+
+                shapely_ramka = Polygon(ramka)
+                shapely_box = box(track.boxes[-1][0], track.boxes[-1][1], track.boxes[-1][2], track.boxes[-1][3])
+                interscec_ = shapely_ramka.intersection(shapely_box).area/shapely_ramka.area*100
+                if (interscec_ > iou_tresh_perc):
+                    ramki_colors[i] = 1
+                else:
+                    ramki_colors[i] = 0
+
+        
+        # then draw polygones
+        for i, ramka in enumerate(ramki_scaled):
+            color_ = green if ramki_colors[i] == 1 else blue
+            cv2.polylines(wframe, np.array([ramka], np.int32), 1, color_, 3)
+        
+
         # draw arrows for polygones
-        for i, poly in enumerate(arrows):
+        for i, poly in enumerate(arrows): 
+            # arrows - [[[[x,y],[x,y],[x,y]], [...], [...], [...]], [[...], [...], [...], [...]]]
             for j, arrow in enumerate(poly):
                 if ramki_directions[i][j] == 1:
                     # cv2.polylines(frame, np.array(item), 1, red, 0)
                     # print('arrow',[arrow])
-                    cv2.polylines(frame, np.array([arrow]), 1, blue, 1)
+                    cv2.polylines(frame, np.array([arrow]), 1, blue, 2)
+
+
 
         tpf = int((time.time()-tss)*1000)
         

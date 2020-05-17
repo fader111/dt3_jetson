@@ -1,4 +1,6 @@
 def bb_intersection_over_union(boxA, boxB):
+    # assert(type(boxA) == list)
+    # assert(type(boxB) == list)
     # determine the (x, y)-coordinates of the intersection rectangle
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])

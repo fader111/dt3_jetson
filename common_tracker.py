@@ -47,7 +47,7 @@ def arrows_path(path, h):
             if (x1>x2):
                 x3 = arrowsPath[i][2][0] = -shiftX+x1
                 y3 = arrowsPath[i][2][1] = shiftY+y1
-        print(f'i{i} x3y3 {x3, y3}')
+        # print(f'i{i} x3y3 {x3, y3}')
     return arrowsPath
 
 
