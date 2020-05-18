@@ -1,5 +1,6 @@
 """ gets detections from jetson cnn-based detectors.
     Build tracks based on dlib tracker which updated by detector using iou algorythm.
+
     Kalman filtering implemented???
 """
 import jetson.inference
@@ -20,7 +21,6 @@ from iou import bb_intersection_over_union
 from track_dlib import Track
 from dlib import correlation_tracker
 from shapely.geometry import Point, Polygon, box
-from detect_zones import Ramka
 # import Jetson.GPIO as GPIO
 
 # cascade_path = 'vehicles_cascadeLBP_w25_h25_p2572_n58652_neg_roof.xml'
@@ -41,7 +41,7 @@ network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
 
 network = network_lst[1]
 
-threshold = 0.2  # 0.2 for jetson inference object detection
+threshold = 0.2  # for jetson inference object detection
 iou_tresh_perc = 10  # tresh for cnn detection bbox and car detecting zone intersection in percents
 width = 1920  # 640
 height = 1080  # 480
@@ -58,8 +58,7 @@ resolution_str = str(cur_resolution[0]) + 'x' + str(cur_resolution[1])
 
 visual = True  # visual mode
 
-# video_src = "/home/a/Videos/U524806_3.avi"
-video_src = "/home/a/Videos/U524802_1_695_0_new.avi"
+video_src = "/home/a/Videos/U524806_3.avi"
 # video_src = "/home/a/dt3_jetson/jam_video_dinamo.avi" gets some distorted video IDKW
 # video_src = "http://95.215.176.83:10090/video30.mjpg?resolution=&fps="
 # video_src = "http://62.117.66.226:5118/axis-cgi/mjpg/video.cgi?camera=1&dummy=0.45198500%201389718502" # sokolniki shlagbaum
@@ -71,11 +70,11 @@ USE_CAMERA = False
 USE_GAMMA = False  # True - for night video
 
 bboxes = []  # bbox's of each frame
-max_track_lifetime = 2  # if it older than num secs it removes
+max_track_lifetime = 3  # if it older than num secs it removes
 if USE_CAMERA:
     detect_phase_period = 10  # detection phase period in frames
 else:
-    detect_phase_period = 5  # detection phase period in frames
+    detect_phase_period = 3  # detection phase period in frames
 
 iou_tresh = 0.2  # treshold for tracker append criteria 0.4 less- more sensitive, more mistakes
 
@@ -171,9 +170,7 @@ def proc():
         height, width = img_c.shape[:2]
         # cv2.line(img, (0, up_bord), (width, up_bord), 255, 1)
 
-        frame_show = frame = img_c # frame_show only for display on interface with texts, rectangles and labels
-        frame_show = np.copy(frame_show) # separate frame_show to another object
-
+        frame = img_c
         # needs for cuda to add new one channel
         img_c = cv2.cvtColor(img_c, cv2.COLOR_BGR2RGBA)  # ogiginal variant
 
@@ -214,8 +211,8 @@ def proc():
                     class_string = ('wtf?')
                     continue # go 
                 
-                cv2.putText(frame_show, class_string, (x1+1, y1-4), cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 1)
-                cv2.rectangle(frame_show, (x1, y1), (x2, y2), green, 1)
+                cv2.putText(frame, class_string, (x1+1, y1-4), cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 1)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), green, 1)
                 # if detection.ClassID == 3: # car in coco
                 # print ('car detection confidence -', detection.Confidence)
                 stop_ = False
@@ -235,7 +232,7 @@ def proc():
                         else:
                             # mark this track as completed, don't update it anymore
                             track.complete = True
-                            # track.boxes = [] # no, exception in iou_val above
+                            # track.boxes = []
                         break  # do not need do more with this bbox, go out
                 if stop_:
                     break
@@ -259,8 +256,8 @@ def proc():
                     else:
                         class_string = ('wtf?')
                     
-                    cv2.putText(frame_show, class_string, (x1+1, y1-4), cv2.FONT_HERSHEY_SIMPLEX, 0.6, purple, 1)
-                    cv2.rectangle(frame_show, (x1, y1), (x2, y2), purple, 1)
+                    cv2.putText(frame, class_string, (x1+1, y1-4), cv2.FONT_HERSHEY_SIMPLEX, 0.6, purple, 1)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), purple, 1)
 
         wframe = frame  # .copy()
         # if web_is_on(): # если web работает копируем исходный фрейм для него
@@ -268,17 +265,14 @@ def proc():
 
         # remove frozen tracks and tracks with length less then 3 points.
         for track in tracks[:]:
-            now = time.time()
             # if max track life time is over, or track isn't appended for more than 1 sec, del it
-            if (now - track.ts > max_track_lifetime) | \
-                ((now - track.ts > 3) & (len(track.boxes) < 3)) | \
-                (now - track.renew_ts > 40):
+            if (time.time() - track.ts > max_track_lifetime) | ((time.time() - track.ts > 3) & (len(track.boxes) < 3)):
                 if key_time != 0:  # when video capturing stops tracks don't delete
                     tracks.remove(track)
 
         # draw tracks
         for track in tracks:
-            track.draw_tracks(frame_show)
+            track.draw_tracks(frame)
         # draw frame resolution
         if net.GetNetworkFPS() != math.inf:
             fps = str(round(net.GetNetworkFPS()))
@@ -306,60 +300,61 @@ def proc():
             polygones = json.loads(q_ramki.get()) # not zoomed right 
             # calculate polygones coordinates in scale
             ramki_scaled = []
+            ramki_directions = []
+            ramki_colors = []
+            arrows = []
             y_size, x_size = wframe.shape[:2]
             if ("polygones") in polygones:
                 x_factor, y_factor = polygones["frame"]
-                for k, polygon in enumerate(polygones["polygones"]):
+                for polygon in polygones["polygones"]:
                     polygon_sc = [[x*x_size//x_factor, y*y_size//y_factor] for x, y in polygon]
-                    ramki_scaled.append(Ramka(polygon_sc, polygones["ramkiDirections"][k], y_size))
-                print(f'ramki scaled {ramki_scaled}')
+                    ramki_scaled.append(polygon_sc)
+                    ramki_colors.append(0)
+                    # fill up the arrows list
+                    arrows.append(arrows_path(polygon_sc, y_size))
+                # print(f'ramki scaled {ramki_scaled}')
+                ramki_directions = polygones["ramkiDirections"]
                 # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
         
 
         # if any track point is inside the detecting zone - change it's state to On.
         # use shapely lib to calculate intersections of polygones
-        for i, ramka in enumerate(ramki_scaled):
-            ramka.color = 0 # for each ramka before iterate for frames, reset it 
-            # if some track below cross, it,  it woll be on for whole frame. 
+        for i , ramka in enumerate(ramki_scaled):
             for track in tracks:
-                if not track.complete:
-                    shapely_box = box(track.boxes[-1][0], track.boxes[-1][1], track.boxes[-1][2], track.boxes[-1][3])
-                    # interscec_ = ramka.shapely_path.intersection(shapely_box).area/ramka.area*100
-                    interscec_ = ramka.shapely_path.intersection(shapely_box).area/ramka.area*100
-                    if (interscec_ > iou_tresh_perc):
-                        # here need to check if track points are in detecting zone, and only then swith it on
-                        # iterate for points in track, check if point inside the zone
-                        for j in range(len(track.points)):
-                            point = track.points[len(track.points)-1-j]
-                            if Point(point).within(ramka.shapely_path):
-                                ramka.color = 1
-                    # else:
-                        # ramka.color = 0
+                shapely_ramka = Polygon(ramka)
+                shapely_box = box(track.boxes[-1][0], track.boxes[-1][1], track.boxes[-1][2], track.boxes[-1][3])
+                interscec_ = shapely_ramka.intersection(shapely_box).area/shapely_ramka.area*100
+                if (interscec_ > iou_tresh_perc):
+                    # here need to check if track points are in detecting zone, and only then swith it on
+                    # ramki_colors[i] = 0
+                    # iterate for points in track, check if point inside the zone
+                    # for j in range(len(track.points)):
+                        # point = track.points[len(track.points)-1-j]
+                        # if Point(point).within(shapely_ramka):
+                            # ramki_colors[i] = 1
+                            # break
+                    ramki_colors[i] = 1
+
+                else:
+                    ramki_colors[i] = 0
         
-        # then draw polygones with arrows
+        # then draw polygones
         for i, ramka in enumerate(ramki_scaled):
-            color_ = green if ramka.color == 1 else blue
-            cv2.putText(frame_show, str(i+1), (ramka.center[0]-5, ramka.center[1]+5), 
+            color_ = green if ramki_colors[i] == 1 else blue
+            cv2.putText(wframe, str(i+1), (ramka[3][0] + 5, ramka[3][1] -20), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_, 2)
-            # draw polygones 
-            cv2.polylines(frame_show, np.array([ramka.path], np.int32), 1, color_, 3)
-            # draw arrows
-            # for j, arrow in enumerate(poly):
-            for j in range(4):
-                if ramka.directions[j] ==1:
-                    cv2.polylines(frame_show, np.array([ramka.arrows_path[j]]), 1, color_ , 2)
+            cv2.polylines(wframe, np.array([ramka], np.int32), 1, color_, 3)
         
 
         # draw arrows for polygones
         # arrows - [[[[x,y],[x,y],[x,y]], [...], [...], [...]], [[...], [...], [...], [...]]]
-        '''
         for i, poly in enumerate(arrows): 
             for j, arrow in enumerate(poly):
                 if ramki_directions[i][j] == 1:
                     # cv2.polylines(frame, np.array(item), 1, red, 0)
                     # print('arrow',[arrow])
-                    cv2.polylines(frame_show, np.array([arrow]), 1, blue, 2)
-        '''
+                    cv2.polylines(frame, np.array([arrow]), 1, blue, 2)
+
         tpf = int((time.time()-tss)*1000)
         
         if frm_number < 5:
@@ -373,12 +368,12 @@ def proc():
             # img = cv2.resize(img, (800, 600))
             frame_str = f'{int(tpf_midle)} ms/f tr-{len(tracks)} ' + \
                         f'{width}x{height} fps{fps} {network}'
-            cv2.putText(frame_show, frame_str, (15, 15),
+            cv2.putText(wframe, frame_str, (15, 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             # cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
             # cv2.imshow("Frame", wframe)
 
-            put_queue(q_pict, frame_show)  # put the picture for web in the picture Queue
+            put_queue(q_pict, wframe)  # put the picture for web in the picture Queue
             key = cv2.waitKey(key_time) & 0xFF
             # if the `ESC` key was pressed, break from the loop
             if key == 27:

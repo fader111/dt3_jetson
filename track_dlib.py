@@ -27,6 +27,7 @@ class Track:
         self.t.start_track(rgb, rect)
         self.color = self.get_random_color()
         self.ts = time.time()
+        self.renew_ts = time.time()
 
     def renew(self, rgb, bbox, ClassID, confidence):
         ''' appends bboxes to track in detection phase:
@@ -39,6 +40,7 @@ class Track:
         rect = dlib.rectangle(bbox[0], bbox[1], bbox[2], bbox[3])
         self.t.start_track(rgb, rect)
         self.ts = time.time()
+        self.renew_ts = time.time()
 
     def update(self, rgb):
         ''' updates self.t tracker in tracking phase'''
@@ -57,8 +59,10 @@ class Track:
             while len(self.points) > self.max_point_number:
                 self.boxes.pop(0)
                 self.points.pop(0)
+            self.ts = time.time()
         else:
             self.complete = True
+        
 
     def bbox_center(self, bbox):
         '''calculates the center point bbox'''
@@ -89,7 +93,7 @@ class Track:
 
     def draw_tracks(self, frm):
         '''draw tracks points and lines'''
-        if len(self.points) > 2:  # если в треке достаточно точек для рисования
+        if 1:#len(self.points) > 2:  # если в треке достаточно точек для рисования
             cv2.putText(frm, str(self.tr_number), (self.points[0][0]+5, self.points[0][1]+5),
                         cv2.FONT_HERSHEY_DUPLEX, 0.5, self.color, 1)
             if True:  # not self.filtr:
