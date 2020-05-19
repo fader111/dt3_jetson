@@ -28,7 +28,7 @@ from detect_zones import Ramka
 
 q_pict = Queue(maxsize=5)  # queue for web picts
 q_status = Queue(maxsize=5)  # queue for web status
-q_ramki = Queue(maxsize=5)  # очередь где лежат рамки
+q_ramki = Queue(maxsize=5)  # очередь где лежат рамки - геометрия, стрелки и пр.
 
 # jetson inference networks list
 network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
@@ -59,7 +59,8 @@ resolution_str = str(cur_resolution[0]) + 'x' + str(cur_resolution[1])
 visual = True  # visual mode
 
 # video_src = "/home/a/Videos/U524806_3.avi"
-video_src = "/home/a/Videos/U524802_1_695_0_new.avi"
+video_src = "/home/a/Videos/U524802_1_695_0_new.avi" # 2650 x 2048
+# video_src = '/home/a/Videos/lenin35_640.avi' # h 640
 # video_src = "/home/a/dt3_jetson/jam_video_dinamo.avi" gets some distorted video IDKW
 # video_src = "http://95.215.176.83:10090/video30.mjpg?resolution=&fps="
 # video_src = "http://62.117.66.226:5118/axis-cgi/mjpg/video.cgi?camera=1&dummy=0.45198500%201389718502" # sokolniki shlagbaum
@@ -70,7 +71,7 @@ video_src = "/home/a/Videos/U524802_1_695_0_new.avi"
 USE_CAMERA = False
 USE_GAMMA = False  # True - for night video
 
-bboxes = []  # bbox's of each frame
+# bboxes = []  # bbox's of each frame # candidate for removing
 max_track_lifetime = 2  # if it older than num secs it removes
 if USE_CAMERA:
     detect_phase_period = 10  # detection phase period in frames
@@ -91,6 +92,20 @@ camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(wid
 		height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv flip-method=2 ! \
         video/x-raw, format=(string)BGRx ! \
         videoconvert ! video/x-raw, format=(string)BGR ! appsink"
+
+poligones_filepath = '/home/a/dt3_jetson/polygones.dat'
+
+def read_polygones_from_file(filePath):
+    ''' read polygones from file
+        filePath = full path to polygones.dat '''
+    try:
+        with open(filePath, 'r') as f:
+            poligs = f.read()  
+        print(f'polygones read from file: {poligs}')
+        return json.loads(poligs)
+    except:
+        print(u"Couldn't read polygones from polygones.dat")
+        return {}
 
 
 def put_queue(queue, data):
@@ -120,14 +135,14 @@ def proc():
     key_time = 1
     new_tr_number = 0  # for tracks numeration
     frm_number = 0
-    polygones = {} # json c рамками и направлениями
-    ramki_scaled = [] # ramki scaled
-    ramki_colors = [] # ramki colors
-    ramki_directions = [] # ramki directions
+    ramki_scaled = [] # ramki scaled mass for Instances of Ramka
+    ramki_status = [] # mass of 0 and 1 for send to hub as json, len = len(ramki_scaled), 0 if ramka off, 1 - if on
     bboxes = []
     tracks = []  # list for Track class instances
-    arrows = [] # arrows of polygones path
     stop_ = False  # aux for detection break
+
+    polygones = read_polygones_from_file(poligones_filepath) # json c рамками и направлениями
+    ramki_status = [0 for i in range(len(polygones["polygones"]))]
 
     while True:
         # if memmon:
@@ -314,7 +329,8 @@ def proc():
                     ramki_scaled.append(Ramka(polygon_sc, polygones["ramkiDirections"][k], y_size))
                 print(f'ramki scaled {ramki_scaled}')
                 # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
-        
+            ramki_status = [0 for i in range(len(ramki_scaled))]
+
 
         # if any track point is inside the detecting zone - change it's state to On.
         # use shapely lib to calculate intersections of polygones
@@ -333,9 +349,9 @@ def proc():
                             point = track.points[len(track.points)-1-j]
                             if Point(point).within(ramka.shapely_path):
                                 ramka.color = 1
-                    # else:
-                        # ramka.color = 0
-        
+
+
+
         # then draw polygones with arrows
         for i, ramka in enumerate(ramki_scaled):
             color_ = green if ramka.color == 1 else blue
@@ -347,8 +363,11 @@ def proc():
             # for j, arrow in enumerate(poly):
             for j in range(4):
                 if ramka.directions[j] ==1:
-                    cv2.polylines(frame_show, np.array([ramka.arrows_path[j]]), 1, color_ , 2)
-        
+                    cv2.polylines(frame_show, np.array([ramka.arrows_path[j]]), 1, color_, 2)
+            ramki_status[i] = ramka.color
+
+        # send ramki status to hub
+        #sendDetStatusToHub(ramki_status)
 
         # draw arrows for polygones
         # arrows - [[[[x,y],[x,y],[x,y]], [...], [...], [...]], [[...], [...], [...], [...]]]

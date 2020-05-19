@@ -235,6 +235,7 @@ def sendDetStatusToHub():  # передача состояний рамок на
 
 
 def main_process():
+    get_ip()
     proc()
 
 
