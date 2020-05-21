@@ -19,8 +19,8 @@ def get_gateway():
     return (res.read())
 
 
-def get_hub(path):
-    filePath = path + 'ipconf.dat'
+def get_hub(filePath):
+    # filePath = path + 'ipconf.dat'
     data = {'hub': '0.0.0.0'}  # на случай, если файл не откроется
     try:
         with open(filePath, 'r', encoding='utf-8') as f:

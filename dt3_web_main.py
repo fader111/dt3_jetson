@@ -69,7 +69,7 @@ def sendSettingsToServer():
     """ это вызывается при нажатии на кнопку на форме и сохраняет параметры ip на сервере """
     print('request.form',
           request.form)  # ImmutableMultiDict([('gateway', '192.168.0.254'), ('hub', '192.168.0.39'), ('ip', '192.168.0.16')])
-    filePath_ipconf = path + 'ipconf.dat'
+    settings_file_path = path + 'settings.dat'
     if request.method == 'POST':
         ip = request.form['ip']
         # mask = request.form['mask'] если в посылке нет такого поля прога тут зависает нахрен.
@@ -81,9 +81,11 @@ def sendSettingsToServer():
     ip_ext = ip  # +'/24' # костыль пока маску не сделал
     change_ip_on_jetson(ip_ext, gateway)  # меняет ip и default gw
     applyIPsettingsJetson(gateway)  # применить все настройки перегрузить сетевые службы
-    with open(filePath_ipconf, 'w') as f:  # Открываем на чтение и запись, записать адрес хаба
+    with open(settings_file_path, 'w') as f:  # Открываем на чтение и запись, записать адрес хаба
         f.write(json.dumps({'hub': hub}))  # Пишем данные в файл.( только адрес хаба)
         print('IP settings saved!')
+    # put settings to the queue for update them on main_proc_dlib
+    updateSettings(json.dumps({'hub': hub}))
     return json.dumps({'ip': ip, 'gateway': gateway, 'hub': hub})
 
 
@@ -160,6 +162,14 @@ def updatePoly(poly):
         q_ramki.put(poly)  # обновили очередь рамок.
 
 
+def updateSettings(settings):
+    ''' Updates settings in main_proc_dlib, when changes come from web client'''
+    while not q_settings.empty():
+        q_settings.get()
+    if not q_settings.qsize() >= q_settings.maxsize:
+        q_settings.put(settings)
+
+
 def applyIPsettingsLinux(gate):
     """apply all the network settings, restart dcpcd service after changes on web page"""
     _comm = os.popen("sudo ip addr flush dev eth0 && sudo systemctl restart dhcpcd.service")
@@ -215,27 +225,7 @@ def gpio_button_handler(channel):
             # time.sleep(0.1)
 
 
-def sendDetStatusToHub():  # передача состояний рамок на концентратор методом POST
-    # def sendColorStatusToHub(hubAddress = '192.168.0.39:80'):
-    hubAddress = ipStatus['hub']
-    # print('hubAddress = ',hubAddress)
-    addrString = 'http://' + hubAddress + '/detect'
-    if q_status.qsize() > 0:
-        det_status[0] = q_status.get()
-    # print("addrString", addrString, "detST", det_status)
-    try:
-        requests.get(addrString, timeout=(0.1, 0.1))
-        ans = requests.post(addrString, json={"cars_detect": det_status[0]}) # сюда вместо colorStatus через очередь надо сунуть статус сработки!!!!
-        # print('hub ',addrString,)
-        # return ans.text
-    except:
-        pass
-        # print('expt from  sendColorStatusToHub', )
-        # return 'Disconnected...'
-
-
 def main_process():
-    get_ip()
     proc()
 
 
@@ -249,8 +239,8 @@ ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
 print ('ipStatus-',ipStatus)
 
 # шлем статус сработки детектора на контроллер , концентратор. раз в 400 мс.
-rtUpdStatusForHub = RepeatedTimer(0.4, sendDetStatusToHub)  # обновляем статус для Hub'a раз в 400 мс
-rtUpdStatusForHub.start()
+# rtUpdStatusForHub = RepeatedTimer(0.4, sendDetStatusToHub)  # обновляем статус для Hub'a раз в 400 мс
+# rtUpdStatusForHub.start()
 
 # в параллельном процессе запускаем все вычисления
 

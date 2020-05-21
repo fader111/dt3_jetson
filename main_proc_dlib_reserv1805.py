@@ -58,7 +58,7 @@ resolution_str = str(cur_resolution[0]) + 'x' + str(cur_resolution[1])
 
 visual = True  # visual mode
 
-video_src = "/home/a/Videos/U524806_3.avi"
+video_src = "/home/a/Videos/U524802_1_695_0_new.avi"
 # video_src = "/home/a/dt3_jetson/jam_video_dinamo.avi" gets some distorted video IDKW
 # video_src = "http://95.215.176.83:10090/video30.mjpg?resolution=&fps="
 # video_src = "http://62.117.66.226:5118/axis-cgi/mjpg/video.cgi?camera=1&dummy=0.45198500%201389718502" # sokolniki shlagbaum

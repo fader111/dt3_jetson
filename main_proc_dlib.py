@@ -15,6 +15,7 @@ import numpy as np
 import json
 from RepeatedTimer_ import RepeatedTimer
 from common_tracker import *
+from get_net_settings import *
 from iou import bb_intersection_over_union
 # from track_iou_kalman_cv2 import Track
 from track_dlib import Track
@@ -26,28 +27,29 @@ from detect_zones import Ramka
 # cascade_path = 'vehicles_cascadeLBP_w25_h25_p2572_n58652_neg_roof.xml'
 # cascade_path = 'vehicle_cascadeLBP_w20_h20_p2139.xml'
 
-q_pict = Queue(maxsize=5)  # queue for web picts
-q_status = Queue(maxsize=5)  # queue for web status
-q_ramki = Queue(maxsize=5)  # очередь где лежат рамки - геометрия, стрелки и пр.
+q_pict = Queue(maxsize=5)       # queue for web picts
+q_settings = Queue(maxsize=5)   # queue for ip and other settings to sent from web client to python
+q_ramki = Queue(maxsize=5)      # polygones paths
+q_status = Queue(maxsize=5)     # current status of process for web.
 
 # jetson inference networks list
 network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
                "ssd-inception-v2",  # 1
-               "pednet",           # 2
-               "alexnet",          # 3
-               "facenet",          # 4
-               "googlenet"         # 5 also good
+               "pednet",            # 2
+               "alexnet",           # 3
+               "facenet",           # 4
+               "googlenet"          # 5 also good
                ]
 
 network = network_lst[1]
 
 threshold = 0.2  # 0.2 for jetson inference object detection
 iou_tresh_perc = 10  # tresh for cnn detection bbox and car detecting zone intersection in percents
-width = 1920  # 640
-height = 1080  # 480
-# camera_src = '/dev/video1'  # for USB
+width = 1920  # 640 width settings for camera capturing
+height = 1080  # 480 height for the same
+# camera_src = '/dev/video1'  # for USB camera
 # camera_src = '0'  # for sci Gstreamer 
-# camera = jetson.utils.gstCamera(width, height, camera_src)
+# camera = jetson.utils.gstCamera(width, height, camera_src) # also possible capturing way
 overlay = "box,labels,conf"
 print("[INFO] loading model...")
 net = jetson.inference.detectNet(network, sys.argv, threshold)
@@ -57,6 +59,8 @@ scale_factor = cur_resolution[0]/400
 resolution_str = str(cur_resolution[0]) + 'x' + str(cur_resolution[1])
 
 visual = True  # visual mode
+
+proj_path = '/home/a/dt3_jetson/'  # путь до папки проекта
 
 # video_src = "/home/a/Videos/U524806_3.avi"
 video_src = "/home/a/Videos/U524802_1_695_0_new.avi" # 2650 x 2048
@@ -94,6 +98,20 @@ camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(wid
         videoconvert ! video/x-raw, format=(string)BGR ! appsink"
 
 poligones_filepath = '/home/a/dt3_jetson/polygones.dat'
+settings_filepath = '/home/a/dt3_jetson/settings.dat'
+
+
+def read_setts_from_syst(filePath):
+    ''' read settings ip and others from system and config file
+        filePath = full path to settings.dat
+    '''
+    # print ('filePath' + filePath)
+    settings_ = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
+                "gateway": get_gateway(),
+                "hub": get_hub(filePath)
+            }
+    return settings_
+
 
 def read_polygones_from_file(filePath):
     ''' read polygones from file
@@ -106,6 +124,21 @@ def read_polygones_from_file(filePath):
     except:
         print(u"Couldn't read polygones from polygones.dat")
         return {}
+
+
+def send_det_status_to_hub(addrString, det_status):  # передача состояний рамок на концентратор методом POST
+    # addrString = 'http://' + hubAddress + '/detect'
+    # must be a list to get an argument as a reference
+    print('                              hub ',addrString, det_status[0])
+
+    try:
+        requests.get(addrString[0], timeout=(0.1, 0.1))
+        ans = requests.post(addrString, json={"cars_detect": det_status[0]}) # сюда вместо colorStatus через очередь надо сунуть статус сработки!!!!
+        # return ans.text
+    except:
+        pass
+        # print('expt from  sendColorStatusToHub', )
+        # return 'Disconnected...'
 
 
 def put_queue(queue, data):
@@ -140,9 +173,21 @@ def proc():
     bboxes = []
     tracks = []  # list for Track class instances
     stop_ = False  # aux for detection break
-
+    
+    # Init polygones at start processing
     polygones = read_polygones_from_file(poligones_filepath) # json c рамками и направлениями
     ramki_status = [0 for i in range(len(polygones["polygones"]))]
+
+    # Init ip and other settings from system
+    settings = read_setts_from_syst(proj_path+"settings.dat")
+
+    # status of process must send to hub - device wich convert detector packets to the 
+    # physical signals. Do it with repeated timer. Update each 400ms
+    
+    addrString = ['http://' + settings["hub"] + '/detect']
+
+    rtUpdStatusForHub = RepeatedTimer(0.4, send_det_status_to_hub, addrString, ramki_status)
+    rtUpdStatusForHub.start()  
 
     while True:
         # if memmon:
@@ -155,7 +200,7 @@ def proc():
         tss = time.time()  # 90 ms , 60 w/o/ stdout
         ret, img = cap.read()
         # tss= time.time() #78 ms
-
+        # ramki_status[0] = frm_number # its just for test
         if not ret:
             if USE_CAMERA:
                 # cap = cv2.VideoCapture(camera_src) # for USB camera
@@ -299,20 +344,6 @@ def proc():
             fps = str(round(net.GetNetworkFPS()))
         else:
             fps = 'inf...'
-        # resolution_str_ = str(width) + 'x' + str(height)
-        # tot_elapsed_time = str(round((time.time()-tss), 2))
-        # res_string = resolution_str_+'  fps-' + fps + \
-            # ' elps ' + tot_elapsed_time + ' net-' + network
-        # cv2.putText(wframe, res_string, (15, 30),
-                    # cv2.FONT_HERSHEY_SIMPLEX, 0.5, 255, 1)
-        # draw current time
-        # os.popen("date").read()[:-1] # eats fckng 120 ms in inference!!!! 120 Karl!!!!
-        # cv2.putText(wframe, time_str, (15, 15),
-        # cv2.FONT_HERSHEY_DUPLEX, 0.5, 255, 1)
-        # put_queue(q_pict, wframe)  # put the picture for web in the picture Queue
-        # put_queue(q_status, GREEN_TAG)
-        
-        # calculate time per frame in msec
 
         # draw detecting zones q_ramki - Queue, if the are new detecting areas, they are in 
         # this queue
@@ -327,12 +358,16 @@ def proc():
                 for k, polygon in enumerate(polygones["polygones"]):
                     polygon_sc = [[x*x_size//x_factor, y*y_size//y_factor] for x, y in polygon]
                     ramki_scaled.append(Ramka(polygon_sc, polygones["ramkiDirections"][k], y_size))
-                print(f'ramki scaled {ramki_scaled}')
-                # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
+            print(f'ramki scaled {ramki_scaled}')
+            # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
             ramki_status = [0 for i in range(len(ramki_scaled))]
 
+        if not q_settings.empty():
+            settings = json.loads(q_settings.get())
+            addrString[0] = 'http://' + settings["hub"] + '/detect'
+            # print('pops')
 
-        # if any track point is inside the detecting zone - change it's state to On.
+        # If any track point is inside the detecting zone - change it's state to On.
         # use shapely lib to calculate intersections of polygones
         for i, ramka in enumerate(ramki_scaled):
             ramka.color = 0 # for each ramka before iterate for frames, reset it 
@@ -365,20 +400,8 @@ def proc():
                 if ramka.directions[j] ==1:
                     cv2.polylines(frame_show, np.array([ramka.arrows_path[j]]), 1, color_, 2)
             ramki_status[i] = ramka.color
+        
 
-        # send ramki status to hub
-        #sendDetStatusToHub(ramki_status)
-
-        # draw arrows for polygones
-        # arrows - [[[[x,y],[x,y],[x,y]], [...], [...], [...]], [[...], [...], [...], [...]]]
-        '''
-        for i, poly in enumerate(arrows): 
-            for j, arrow in enumerate(poly):
-                if ramki_directions[i][j] == 1:
-                    # cv2.polylines(frame, np.array(item), 1, red, 0)
-                    # print('arrow',[arrow])
-                    cv2.polylines(frame_show, np.array([arrow]), 1, blue, 2)
-        '''
         tpf = int((time.time()-tss)*1000)
         
         if frm_number < 5:
