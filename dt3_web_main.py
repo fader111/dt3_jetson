@@ -5,6 +5,7 @@ import sys, os, time, cv2, socket
 from flask import Flask, session, render_template, Response, request, json, jsonify, make_response
 # from flask_session import Session
 # from multiprocessing import Process, Queue, cpu_count #это фризит процесс.
+# from multiprocessing import Process, Queue
 from multiprocessing.dummy import Process, Queue
 from threading import Timer
 #from camera_pi import Camera

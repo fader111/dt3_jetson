@@ -48,8 +48,6 @@ threshold = 0.2  # 0.2 for jetson inference object detection
 iou_tresh_perc = 10  # tresh for cnn detection bbox and car detecting zone intersection in percents
 width = 1920  # 640 width settings for camera capturing
 height = 1080  # 480 height for the same
-proc_width = 640   
-proc_height = 480 
 # camera_src = '/dev/video1'  # for USB camera
 # camera_src = '0'  # for sci Gstreamer 
 # camera = jetson.utils.gstCamera(width, height, camera_src) # also possible capturing way
@@ -132,7 +130,7 @@ def read_polygones_from_file(filePath):
 def send_det_status_to_hub(addrString, det_status):  # передача состояний рамок на концентратор методом POST
     # addrString = 'http://' + hubAddress + '/detect'
     # must be a list to get an argument as a reference
-    print('                              hub ',addrString, det_status)
+    print('                              hub ',addrString, det_status[0], det_status[1], det_status[2],)
 
     try:
         requests.get(addrString[0], timeout=(0.1, 0.1))
@@ -167,16 +165,16 @@ def proc():
     else:
         cap = cv2.VideoCapture(video_src)
 
+    a1 =0
+    a2=0
+    a3=0
 
     # prev_bboxes = []  # bboxes to draw from previous frame
     key_time = 1
     new_tr_number = 0  # for tracks numeration
     frm_number = 0
     ramki_scaled = [] # ramki scaled mass for Instances of Ramka
-    ramki_status = [] # mass of 0 and 1 for send to hub as json, len = len(ramki_scaled), 0 if ramka off, 1 - if on
-    ramki_status_ = [] # copy of ramki status to sent to repeated timer for sending to hub. 
-    # need to have only one reference, thats why its created.
-
+    ramki_status = [0,0,0] # mass of 0 and 1 for send to hub as json, len = len(ramki_scaled), 0 if ramka off, 1 - if on
     bboxes = []
     tracks = []  # list for Track class instances
     stop_ = False  # aux for detection break
@@ -184,24 +182,17 @@ def proc():
     # Init polygones at start processing
     polygones = read_polygones_from_file(poligones_filepath) # json c рамками и направлениями
     ramki_status = [0 for i in range(len(polygones["polygones"]))]
-    ramki_status_ =[0 for i in range(len(polygones["polygones"]))]
+
     # Init ip and other settings from system
     settings = read_setts_from_syst(proj_path+"settings.dat")
-
-    # before start 
-    if ("polygones") in polygones:
-        x_factor, y_factor = polygones["frame"]
-        for k, polygon in enumerate(polygones["polygones"]):
-            polygon_sc = [[x*proc_width//x_factor, y*proc_height//y_factor] for x, y in polygon]
-            ramki_scaled.append(Ramka(polygon_sc, polygones["ramkiDirections"][k], proc_height))
 
     # status of process must send to hub - device wich convert detector packets to the 
     # physical signals. Do it with repeated timer. Update each 400ms
     
     addrString = ['http://' + settings["hub"] + '/detect']
 
-    rtUpdStatusForHub = RepeatedTimer(0.4, send_det_status_to_hub, addrString, ramki_status_)
-    rtUpdStatusForHub.start()
+    rtUpdStatusForHub = RepeatedTimer(0.4, send_det_status_to_hub, addrString, ramki_status)
+    rtUpdStatusForHub.start()  
 
     while True:
         # if memmon:
@@ -214,11 +205,25 @@ def proc():
         tss = time.time()  # 90 ms , 60 w/o/ stdout
         ret, img = cap.read()
         # tss= time.time() #78 ms
-        
-        if len(ramki_status) == len(ramki_status_):
-            for i in range(len(ramki_status)):
-                ramki_status_[i] = ramki_status[i]
-
+        # [frm_number for i in ramki_status] BAD
+        # try:
+        #     ramki_status[0] = 1#ramki_scaled[0].color
+        #     ramki_status[1] = ramki_scaled[1].color
+        #     ramki_status[2] = ramki_scaled[2].color
+        # except:
+        #     pass
+        #for ii in range(len(ramki_scaled)):
+            # print ramki_scaled[i].color
+            # var = ramki_scaled[i].color
+        a1=1
+        if a1==1:
+            ramki_status[0] = 1 #if a1==1 else 0
+        #    ramki_status[ii] = 1
+            # tess = ramki_scaled[i].color
+        #    pass
+        # ramki_status = [frm_number, frm_number, frm_number] # BAD its just for test
+        # ramki_status[1] = frm_number # its just for test
+        # ramki_status[2] = frm_number # its just for test
         if not ret:
             if USE_CAMERA:
                 # cap = cv2.VideoCapture(camera_src) # for USB camera
@@ -232,7 +237,7 @@ def proc():
         while not ret:
             ret, img = cap.read()
             print ('wait..')
-        img = cv2.resize(img, (proc_width, proc_height))
+        img = cv2.resize(img, (640, 480))
         # img = cv2.resize(img, (800, 604))
         height, width = img.shape[:2]
         # print(f'orig_img.shape = {orig_img.shape}')
@@ -379,13 +384,6 @@ def proc():
             print(f'ramki scaled {ramki_scaled}')
             # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
             ramki_status = [0 for i in range(len(ramki_scaled))]
-            # when lenght ramki_status changed do below, can't remove ramki_status_ object, 
-            # because need to save it's reference fo repeated timer
-            while len(ramki_status_)>len(ramki_status):
-                ramki_status_.pop()
-            while len(ramki_status_)<len(ramki_status):
-                ramki_status_.append(0)
-
 
         if not q_settings.empty():
             settings = json.loads(q_settings.get())
@@ -396,7 +394,6 @@ def proc():
         # use shapely lib to calculate intersections of polygones
         for i, ramka in enumerate(ramki_scaled):
             ramka.color = 0 # for each ramka before iterate for frames, reset it 
-            ramki_status[i]=0
             # if some track below cross, it,  it woll be on for whole frame. 
             for track in tracks:
                 if not track.complete:
@@ -410,7 +407,8 @@ def proc():
                             point = track.points[len(track.points)-1-j]
                             if Point(point).within(ramka.shapely_path):
                                 ramka.color = 1
-                                ramki_status[i]=1
+                                #ramki_status[i]=1
+                                a1=1
 
 
         # then draw polygones with arrows
@@ -472,5 +470,5 @@ def proc():
     cv2.destroyAllWindows()
 
 
-# if __name__ == "__main__":
-    # proc()
+if __name__ == "__main__":
+    proc()
