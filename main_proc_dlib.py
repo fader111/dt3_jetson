@@ -44,12 +44,12 @@ network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
 
 network = network_lst[1]
 
-threshold = 0.2  # 0.2 for jetson inference object detection
-iou_tresh_perc = 10  # tresh for cnn detection bbox and car detecting zone intersection in percents
-width = 1920  # 640 width settings for camera capturing
-height = 1080  # 480 height for the same
-proc_width = 640   
-proc_height = 480 
+threshold = 0.2         # 0.2 for jetson inference object detection
+iou_tresh_perc = 10     # tresh for cnn detection bbox and car detecting zone intersection in percents
+width = 1920            # 640 width settings for camera capturing
+height = 1080           # 480 height for the same
+proc_width = 640        # x size of window for processing with CNN 
+proc_height = 480       # y size
 # camera_src = '/dev/video1'  # for USB camera
 # camera_src = '0'  # for sci Gstreamer 
 # camera = jetson.utils.gstCamera(width, height, camera_src) # also possible capturing way
@@ -132,11 +132,11 @@ def read_polygones_from_file(filePath):
 def send_det_status_to_hub(addrString, det_status):  # передача состояний рамок на концентратор методом POST
     # addrString = 'http://' + hubAddress + '/detect'
     # must be a list to get an argument as a reference
-    print('                              hub ',addrString, det_status)
+    print('                              hub ', addrString, det_status)
 
     try:
         requests.get(addrString[0], timeout=(0.1, 0.1))
-        ans = requests.post(addrString, json={"cars_detect": det_status[0]}) # сюда вместо colorStatus через очередь надо сунуть статус сработки!!!!
+        ans = requests.post(addrString, json={"cars_detect": det_status[0`]}) # сюда вместо colorStatus через очередь надо сунуть статус сработки!!!!
         # return ans.text
     except:
         pass

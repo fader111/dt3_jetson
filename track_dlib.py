@@ -29,6 +29,7 @@ class Track:
         self.ts = time.time()
         self.renew_ts = time.time()
 
+
     def renew(self, rgb, bbox, ClassID, confidence):
         ''' appends bboxes to track in detection phase:
             delete tracker, make a new one'''
