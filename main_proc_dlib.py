@@ -136,7 +136,7 @@ def send_det_status_to_hub(addrString, det_status):  # передача сост
 
     try:
         requests.get(addrString[0], timeout=(0.1, 0.1))
-        ans = requests.post(addrString, json={"cars_detect": det_status[0`]}) # сюда вместо colorStatus через очередь надо сунуть статус сработки!!!!
+        ans = requests.post(addrString, json={"cars_detect": det_status}) # сюда вместо colorStatus через очередь надо сунуть статус сработки!!!!
         # return ans.text
     except:
         pass

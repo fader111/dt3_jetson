@@ -153,6 +153,17 @@ def getPolyFromServer():
     return json.dumps(poly)
 
 
+@app.route('/getStatus60')
+def getStatus60():
+    ''' response for client reqoest about traffic parameters fo 60 minutes'''
+    pass
+
+
+@app.route('/getStatus15')
+    ''' response for client reqoest about traffic parameters fo 15 minutes'''
+    pass
+
+
 def updatePoly(poly):
     ''' Updates polygones, when changes come from web client'''
     polygones = poly
