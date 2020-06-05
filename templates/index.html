@@ -15,6 +15,7 @@
     <script type=text/javascript src="{{ url_for('static', filename='jquery.min.js') }}"></script>
     <script type=text/javascript src="{{ url_for('static', filename='bootstrap.min.js') }}"></script>
     <script type=text/javascript src="{{ url_for('static', filename='detector.js') }}"></script>
+    <script type=text/javascript src="{{ url_for('static', filename='transform.js') }}"></script>
 
 </head>
 <body>
@@ -44,6 +45,9 @@
     <!--div id="holder" style="top: 10px; left: 50px; width:800px; height:600px; position: absolute"-->
       <div id="holder" style="top: 0px; left: 0px; width:800px; height:600px; position: absolute">
     </div>  
+    <div id="holderCalibr" style="top: 0px; left: 0px; width:800px; height:600px; position: absolute; visibility:hidden">
+    </div>  
+    
     <!--слой элементов управления справа от картинки-->
     <!-- <div style="float:right; left: 20px; width:100px;height:100px;position: relative"-->
         <!--слой с таблицей для показа сколько машин проехало за минуту и за час-->
@@ -55,10 +59,11 @@
     <div style="float: right; left: 1px; top: 0px; width:100px;height:100px;position: relative">
         <p><button style="width:178px" type="button" id="editButton" value="Редактировать" class="btn btn-primary">Редактировать</button></p>
         <p><button style="width:178px" type="button" id="delButton" value="Удалить все" class="btn btn-primary" disabled="true">Удалить все</button></p>
-    {#    <input type="button" name="camSettingsButton" id="camSettingsButton" value="Настройки детектора" class="button"/><br>#}
+        <!-- <input type="button" name="camSettingsButton" id="camSettingsButton" value="Настройки детектора" class="button"/><br> -->
         <!-- Кнопка, вызывающее модальное окно -->
         <p><a style="width:178px" href="#settings_modal" class="btn btn-primary" data-toggle="modal">Настройки детектора</a></p>
         <a style="width:178px" href="#help_modal" class="btn btn-primary" data-toggle="modal">Справка</a><br><br>
+        <a style="width:178px; margin-top: 20px; visibility:hidden" id="saveCalibButton" type="button" class="btn btn-default" >Сохранить калибровку</a><br><br>
         <!--input type="button" name="helpButton" id="helpButton" value="Справка" class="button"/><br><br-->
         <!--input name="inp1" type="text" value= "30"><br>
         <input id="" name="btn2" style="visibility:visible;" type="submit" value="GO" class="button"/-->
@@ -129,9 +134,15 @@
             </tbody>
           </table>
           </div>
+
+          <div class="modal-body">
+              <form method="post" id="calibrationForm"></form>
+              <button id="calibrationButton" type="button" class="btn btn-default" data-dismiss="modal" value="Настроить расстояния">Настроить расстояния</button>
+          </div>  
+
           <div class="modal-footer">
             <button type="button" class="btn btn-default" data-dismiss="modal">Закрыть</button>
-            <button type="button" class="btn btn-primary" onclick="sendSettingsToServer();">Сохранить изменения</button>
+            <button id="saveSettingsButton" type="button" class="btn btn-primary" >Сохранить изменения</button>
           </div>
         </div>
       </div>

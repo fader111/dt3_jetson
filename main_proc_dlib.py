@@ -2,8 +2,8 @@
     Build tracks based on dlib tracker which updated by detector using iou algorythm.
     Kalman filtering implemented???
 """
-import jetson.inference
-import jetson.utils
+# import jetson.inference
+# import jetson.utils
 from threading import Timer, Thread, Lock
 from multiprocessing.dummy import Process, Queue
 # from multiprocessing import Process, Queue
@@ -55,18 +55,27 @@ proc_height = 480       # y size
 # camera = jetson.utils.gstCamera(width, height, camera_src) # also possible capturing way
 overlay = "box,labels,conf"
 print("[INFO] loading model...")
-net = jetson.inference.detectNet(network, sys.argv, threshold)
+# # net = jetson.inference.detectNet(network, sys.argv, threshold)
 
 cur_resolution = (width, height)
 scale_factor = cur_resolution[0]/400
 resolution_str = str(cur_resolution[0]) + 'x' + str(cur_resolution[1])
 
-visual = True  # visual mode
 
-proj_path = '/home/a/dt3_jetson/'  # путь до папки проекта
+visual = True  # visual mode
+winMode = False # debug mode for windows - means that we are in windows now
+
+if 'win' in sys.platform: 
+    proj_path = 'C:/Users/ataranov/Projects/dt3_jetson/'  # путь до папки проекта
+    winMode = True
+else:
+    proj_path = '/home/a/dt3_jetson/'  # путь до папки проекта
 
 # video_src = "/home/a/Videos/U524806_3.avi"
-video_src = "/home/a/Videos/U524802_1_695_0_new.avi" # 2650 x 2048
+if 'win' in sys.platform:
+    video_src = "G:/U524802_1_695_0_new.avi"
+else:
+    video_src = "/home/a/Videos/U524802_1_695_0_new.avi" # 2650 x 2048
 # video_src = '/home/a/Videos/lenin35_640.avi' # h 640
 # video_src = "/home/a/dt3_jetson/jam_video_dinamo.avi" gets some distorted video IDKW
 # video_src = "http://95.215.176.83:10090/video30.mjpg?resolution=&fps="
@@ -100,8 +109,8 @@ camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(wid
         video/x-raw, format=(string)BGRx ! \
         videoconvert ! video/x-raw, format=(string)BGR ! appsink"
 
-poligones_filepath = '/home/a/dt3_jetson/polygones.dat'
-settings_filepath = '/home/a/dt3_jetson/settings.dat'
+poligones_filepath = proj_path + 'polygones.dat'
+settings_filepath  = proj_path + 'settings.dat'
 
 
 def read_setts_from_syst(filePath):
@@ -111,7 +120,8 @@ def read_setts_from_syst(filePath):
     # print ('filePath' + filePath)
     settings_ = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
                 "gateway": get_gateway(),
-                "hub": get_hub(filePath)
+                "hub": get_hub(filePath),
+                "calibration":get_settings(filePath)["calibration"]
             }
     return settings_
 
@@ -129,14 +139,15 @@ def read_polygones_from_file(filePath):
         return {}
 
 
-def send_det_status_to_hub(addrString, det_status):  # передача состояний рамок на концентратор методом POST
+def send_det_status_to_hub(addrString, det_status):  
+    # передача состояний рамок на концентратор методом POST
     # addrString = 'http://' + hubAddress + '/detect'
     # must be a list to get an argument as a reference
-    print('                              hub ', addrString, det_status)
+    # print('                              hub ', addrString, det_status)
 
     try:
         requests.get(addrString[0], timeout=(0.1, 0.1))
-        ans = requests.post(addrString, json={"cars_detect": det_status}) # сюда вместо colorStatus через очередь надо сунуть статус сработки!!!!
+        ans = requests.post(addrString, json={"cars_detect": det_status}) 
         # return ans.text
     except:
         pass
@@ -170,31 +181,40 @@ def proc():
 
     # prev_bboxes = []  # bboxes to draw from previous frame
     key_time = 1
-    new_tr_number = 0  # for tracks numeration
+    new_tr_number = 0   # for tracks numeration
     frm_number = 0
-    ramki_scaled = [] # ramki scaled mass for Instances of Ramka
-    ramki_status = [] # mass of 0 and 1 for send to hub as json, len = len(ramki_scaled), 0 if ramka off, 1 - if on
-    ramki_status_ = [] # copy of ramki status to sent to repeated timer for sending to hub. 
-    # need to have only one reference, thats why its created.
+    ramki_scaled = []   # ramki scaled mass for Instances of Ramka
+    ramki_status = []   # mass of 0 and 1 for send to hub as json, len = len(ramki_scaled), 0 if ramka off, 1 - if on
+    # need to have only one reference, thats why below fild created.
+    ramki_status_ = []  # copy of ramki status to sent to repeated timer for sending to hub. 
 
     bboxes = []
-    tracks = []  # list for Track class instances
-    stop_ = False  # aux for detection break
+    tracks = []         # list for Track class instances
+    stop_ = False       # aux for detection break
+    polygon_sc = []     # scaled polygon points
+    calibrPoints = []   # list of points of calibration Polygon on road
+    calibrPoints_sc = []# scaled list of points of calibration Polygon
+    w_web = 800         # web picture width
+    h_web = 600         # web picture hight
     
     # Init polygones at start processing
     polygones = read_polygones_from_file(poligones_filepath) # json c рамками и направлениями
     ramki_status = [0 for i in range(len(polygones["polygones"]))]
     ramki_status_ =[0 for i in range(len(polygones["polygones"]))]
     # Init ip and other settings from system
-    settings = read_setts_from_syst(proj_path+"settings.dat")
+    settings = read_setts_from_syst(proj_path + "settings.dat")
 
     # before start 
     if ("polygones") in polygones:
-        x_factor, y_factor = polygones["frame"]
+        w_web, h_web = polygones["frame"]
         for k, polygon in enumerate(polygones["polygones"]):
-            polygon_sc = [[x*proc_width//x_factor, y*proc_height//y_factor] for x, y in polygon]
+            polygon_sc = [[x*proc_width//w_web, y*proc_height//h_web] for x, y in polygon]
             ramki_scaled.append(Ramka(polygon_sc, polygones["ramkiDirections"][k], proc_height))
 
+    if ("calibration") in settings:
+        calibrPoints = json.loads(settings["calibration"])
+        calibrPoints_sc = [[x*proc_width//w_web, y*proc_height//h_web] for x, y in calibrPoints]
+    
     # status of process must send to hub - device wich convert detector packets to the 
     # physical signals. Do it with repeated timer. Update each 400ms
     
@@ -214,7 +234,7 @@ def proc():
         tss = time.time()  # 90 ms , 60 w/o/ stdout
         ret, img = cap.read()
         # tss= time.time() #78 ms
-        
+
         if len(ramki_status) == len(ramki_status_):
             for i in range(len(ramki_status)):
                 ramki_status_[i] = ramki_status[i]
@@ -258,17 +278,20 @@ def proc():
         # Detection phase - each 2nd (5th?) frame will detect using Jetson inference
         if frm_number % detect_phase_period == 0:  # 5 - default
             # tss = time.time() # 56 w/o/ stdout on video
-            frame_cuda = jetson.utils.cudaFromNumpy(img_c)
-            # tss = time.time() # 54 w/o/ stdout on video
-
-            # frame, width, height = camera.CaptureRGBA(zeroCopy = True)
-
-            detections = net.Detect(frame_cuda, width, height, overlay)
-            # for detection in detections:
-            #    if detection.ClassID == 3: # car in coco
-            #    print ('car detection confidence -', detection.Confidence)
-
-            jetson.utils.cudaDeviceSynchronize()
+            '''!!!'''
+            if not winMode:
+                frame_cuda = jetson.utils.cudaFromNumpy(img_c)
+                # tss = time.time() # 54 w/o/ stdout on video
+                # frame, width, height = camera.CaptureRGBA(zeroCopy = True)
+                '''!!!'''
+                detections = net.Detect(frame_cuda, width, height, overlay)
+                # for detection in detections:
+                #    if detection.ClassID == 3: # car in coco
+                #    print ('car detection confidence -', detection.Confidence)
+                '''!!!'''
+                jetson.utils.cudaDeviceSynchronize()
+            else:
+                detections = []
             # create a numpy ndarray that references the CUDA memory
             # it won't be copied, but uses the same memory underneath
             # tss = time.time() # 8-14 w/o/ stdout on video
@@ -358,11 +381,14 @@ def proc():
         for track in tracks:
             track.draw_tracks(frame_show)
         # draw frame resolution
-        if net.GetNetworkFPS() != math.inf:
-            fps = str(round(net.GetNetworkFPS()))
+        '''!!!'''
+        if not winMode:
+            if net.GetNetworkFPS() != math.inf:
+                fps = str(round(net.GetNetworkFPS()))
+            else:
+                fps = ' inf...'
         else:
-            fps = 'inf...'
-
+            fps = ' ***'
         # draw detecting zones q_ramki - Queue, if the are new detecting areas, they are in 
         # this queue
         if not q_ramki.empty():
@@ -372,11 +398,11 @@ def proc():
             ramki_scaled = []
             y_size, x_size = wframe.shape[:2]
             if ("polygones") in polygones:
-                x_factor, y_factor = polygones["frame"]
+                w_web, h_web = polygones["frame"]
                 for k, polygon in enumerate(polygones["polygones"]):
-                    polygon_sc = [[x*x_size//x_factor, y*y_size//y_factor] for x, y in polygon]
+                    polygon_sc = [[x*x_size//w_web, y*y_size//h_web] for x, y in polygon]
                     ramki_scaled.append(Ramka(polygon_sc, polygones["ramkiDirections"][k], y_size))
-            print(f'ramki scaled {ramki_scaled}')
+            # print(f'ramki scaled {ramki_scaled}')
             # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
             ramki_status = [0 for i in range(len(ramki_scaled))]
             # when lenght ramki_status changed do below, can't remove ramki_status_ object, 
@@ -385,15 +411,19 @@ def proc():
                 ramki_status_.pop()
             while len(ramki_status_)<len(ramki_status):
                 ramki_status_.append(0)
-
-
+        
+        # get settings from flask process
         if not q_settings.empty():
+            y_size, x_size = wframe.shape[:2]
             settings = json.loads(q_settings.get())
             addrString[0] = 'http://' + settings["hub"] + '/detect'
-            # print('pops')
+            calibrPoints = json.loads(settings["calibration"])
+            calibrPoints_sc = [[x*x_size//w_web, y*y_size//h_web] for x, y in calibrPoints]
+            print('calibrPoints scaled', calibrPoints_sc)
 
+        ### Changing zone colors ###
         # If any track point is inside the detecting zone - change it's state to On.
-        # use shapely lib to calculate intersections of polygones
+        # use shapely lib to calculate intersections of polygones (good lib)
         for i, ramka in enumerate(ramki_scaled):
             ramka.color = 0 # for each ramka before iterate for frames, reset it 
             ramki_status[i]=0
@@ -410,8 +440,7 @@ def proc():
                             point = track.points[len(track.points)-1-j]
                             if Point(point).within(ramka.shapely_path):
                                 ramka.color = 1
-                                ramki_status[i]=1
-
+                                ramki_status[i] = 1
 
         # then draw polygones with arrows
         for i, ramka in enumerate(ramki_scaled):
@@ -426,8 +455,16 @@ def proc():
                 if ramka.directions[j] ==1:
                     cv2.polylines(frame_show, np.array([ramka.arrows_path[j]]), 1, color_, 2)
         
+        ### do the transform calibration polygone 
 
-        tpf = int((time.time()-tss)*1000)
+
+        # draw calibration polygone 
+        cv2.polylines(frame_show, np.array([calibrPoints_sc]), 1, green, 1)
+
+
+
+        # Time Per Frame to show on the web
+        tpf = int((time.time()-tss)*1000) 
         
         if frm_number < 5:
             tpf_midle = tpf
@@ -442,8 +479,9 @@ def proc():
                         f'{width}x{height} fps{fps} {network}'
             cv2.putText(frame_show, frame_str, (15, 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            # cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
+            cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
             # cv2.imshow("Frame", wframe)
+            cv2.imshow("Frame", frame_show)
 
             put_queue(q_pict, frame_show)  # put the picture for web in the picture Queue
             key = cv2.waitKey(key_time) & 0xFF
@@ -452,14 +490,13 @@ def proc():
                 break
             if key == ord("p"):
                 key_time = 0
-
             if key == ord("o"):
                 key_time = 1
-
             if key == ord("d"):
                 tracks = []  # kill all tracks pressing d
         if frm_number % 10 == 0:
-            print(f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks)}')
+            # print(f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks)}')
+            pass
         
 
         # if memmon:

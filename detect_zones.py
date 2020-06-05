@@ -1,3 +1,4 @@
+''' Alt Sh F - win; Ctrl Sh D - lin'''
 from shapely.geometry import Point, Polygon, box
 import math
 
@@ -6,10 +7,12 @@ green = (0, 255, 0)
 red = (0, 0, 255)
 purple = (255, 0, 255)
 
+
 class Ramka:
     '''has path, color, state, shapely state fields'''
     state = 0               # state of polygon On/Off
-    arrows = []             # arrows graphical path of this polygon.[[[x,y],[x,y],[x,y]], [..], [..]]]
+    # arrows graphical path of this polygon.[[[x,y],[x,y],[x,y]], [..], [..]]]
+    arrows = []
     ramki_directions = []
     color = blue
 
@@ -19,7 +22,7 @@ class Ramka:
             directions = [0,0,0,0] 0 - direction dont set, 1 - set
         '''
         self.path = path
-        self.h = h # frame height in web
+        self.h = h  # frame height in web
         self.directions = directions
         self.shapely_path = Polygon(path)
         self.center = self.center_calc(path)
@@ -52,38 +55,49 @@ class Ramka:
     def arrows_path_calc(self, path, h):
         ''' gives 1 argument - polygon path as [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
             returns arrows as  [[[x,y],[x,y],[x,y]],  [..],[..],[..]]]'''
-        arrowsPath_= [[[0,0],[0,0],[0,0]],[[0,0],[0,0],[0,0]],[[0,0],[0,0],[0,0]],[[0,0],[0,0],[0,0]]]
-        for i in range(4): # for each kernel of polygon
-            x1 = arrowsPath_[i][0][0] = path[i][0]   # // координата x 1 угла стрелки совпадает с x первого угла полигона
+        arrowsPath_ = [[[0, 0], [0, 0], [0, 0]], [[0, 0], [0, 0], [0, 0]], [
+            [0, 0], [0, 0], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
+        for i in range(4):  # for each kernel of polygon
+            # // координата x 1 угла стрелки совпадает с x первого угла полигона
+            x1 = arrowsPath_[i][0][0] = path[i][0]
             y1 = arrowsPath_[i][0][1] = path[i][1]   # // то-же для y
-            if (i<3):                               # // для третьего угла полигона второй угол рамки будет нулевой угол полигона
-                x2 = arrowsPath_[i][1][0] = path[i + 1][0]   # // координата x 2 угла стрелки совпадает с x второго угла полигона
+            # // для третьего угла полигона второй угол рамки будет нулевой угол полигона
+            if (i < 3):
+                # // координата x 2 угла стрелки совпадает с x второго угла полигона
+                x2 = arrowsPath_[i][1][0] = path[i + 1][0]
                 y2 = arrowsPath_[i][1][1] = path[i + 1][1]   # // то-же для y
             else:
                 x2 = arrowsPath_[i][1][0] = path[0][0]
                 y2 = arrowsPath_[i][1][1] = path[0][1]
             # // найдем стороны прямоугольного треугольника - половинки основания стрелки
-            a = math.sqrt((x2-x1)*(x2-x1)+(y1-y2)*(y1-y2))/2    # //первый катет
-            b = a / 2                                               # //второй катет просто задается как половина первого
+            a = math.sqrt((x2-x1)*(x2-x1)+(y1-y2)*(y1-y2)) / \
+                2    # //первый катет
+            # //второй катет просто задается как половина первого
+            b = a / 2
             if (b > h / 20):
-                b = h / 20                                       # // чтоб стрелка не сильно выпирала на больших полигонах
+                # // чтоб стрелка не сильно выпирала на больших полигонах
+                b = h / 20
             с = math.sqrt(a*a+b*b)                              # //гипотенуза
-            if x2 != x1:                         
+            if x2 != x1:
                 ''' prevent division by zero'''
-                alfa = math.atan((y1-y2)/(x2-x1))               # //угол поворота основания стрелки к горизонту в радианах
+                alfa = math.atan(
+                    (y1-y2)/(x2-x1))               # //угол поворота основания стрелки к горизонту в радианах
             else:
                 alfa = math.pi/2
-            shiftX = round((math.cos(alfa+math.asin(b/с)))*с)   # // вспомогательные величины смещения по X
-            shiftY = round((math.sin(alfa+math.asin(b/с)))*с)   # // вспомогательные величины смещения по Y
-            if (i!=2):
-                x3 = arrowsPath_[i][2][0] = shiftX+x1            # // координата x 3 угла стрелки
+            # // вспомогательные величины смещения по X
+            shiftX = round((math.cos(alfa+math.asin(b/с)))*с)
+            # // вспомогательные величины смещения по Y
+            shiftY = round((math.sin(alfa+math.asin(b/с)))*с)
+            if (i != 2):
+                # // координата x 3 угла стрелки
+                x3 = arrowsPath_[i][2][0] = shiftX+x1
                 y3 = arrowsPath_[i][2][1] = -shiftY+y1
             else:
                 x3 = arrowsPath_[i][2][0] = -shiftX + x1
                 y3 = arrowsPath_[i][2][1] = shiftY + y1
             # // координата y 3 угла стрелки
-            if ((i==3)|(i==1)):
-                if (x1>x2):
+            if ((i == 3) | (i == 1)):
+                if (x1 > x2):
                     x3 = arrowsPath_[i][2][0] = -shiftX+x1
                     y3 = arrowsPath_[i][2][1] = shiftY+y1
             # print(f'i{i} x3y3 {x3, y3}')

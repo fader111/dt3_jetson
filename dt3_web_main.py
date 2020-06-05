@@ -1,4 +1,4 @@
-
+''' Taskkill /IM python.exe /F'''
 ''' Transport Detector Type2 with web interface '''
 import cProfile
 import sys, os, time, cv2, socket
@@ -26,7 +26,10 @@ from datetime import datetime
 import requests
 # import logging
 
-path = '/home/a/dt3_jetson/'  # путь до папки проекта
+if 'win' in sys.platform:
+    path = 'C:/Users/ataranov/Projects/dt3_jetson/'  # путь до папки проекта в windows
+else:
+    path = '/home/a/dt3_jetson/'  # путь до папки проекта в linux
 
 ipStatus = {"ip": '192.168.0.100/24',
             "gateway": '192.168.0.1',
@@ -41,7 +44,7 @@ app = Flask(__name__)
 def index():
     ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
                 "gateway": get_gateway(),
-                "hub": get_hub(path)
+                "hub": get_hub(path+"settings.dat")
                 }
     return render_template('index.html', ipStatus=ipStatus)
 
@@ -67,26 +70,33 @@ def gen():
 
 @app.route('/sendSettingsToServer', methods=['GET', 'POST'])
 def sendSettingsToServer():
-    """ это вызывается при нажатии на кнопку на форме и сохраняет параметры ip на сервере """
+    """ это вызывается при нажатии на кнопку "сохранить изменения" и сохраняет параметры ip на сервере """
     print('request.form',
           request.form)  # ImmutableMultiDict([('gateway', '192.168.0.254'), ('hub', '192.168.0.39'), ('ip', '192.168.0.16')])
     settings_file_path = path + 'settings.dat'
     if request.method == 'POST':
-        ip = request.form['ip']
+        ip = request.form["ip"]
         # mask = request.form['mask'] если в посылке нет такого поля прога тут зависает нахрен.
         # print('method post',mask)
-        gateway = request.form['gateway']
-        hub = request.form['hub']
+        gateway = request.form["gateway"]
+        hub = request.form["hub"]
+        calibPoly = request.form['calibration']
     ipStatus["hub"] = hub
     # print('from python: ip', ip,'  mask',mask, '  gateway',gateway,'  hub',hub)
     ip_ext = ip  # +'/24' # костыль пока маску не сделал
     change_ip_on_jetson(ip_ext, gateway)  # меняет ip и default gw
     applyIPsettingsJetson(gateway)  # применить все настройки перегрузить сетевые службы
-    with open(settings_file_path, 'w') as f:  # Открываем на чтение и запись, записать адрес хаба
-        f.write(json.dumps({'hub': hub}))  # Пишем данные в файл.( только адрес хаба)
+    with open(settings_file_path, 'w') as f:  # Открываем на чтение и запись
+        # записываем только то, что не сохранится в линуксе - адрес хаба и калибровачный полигон
+        # остальное - ip маска и шлюз применится в линуксе и сохранится. записывать нет надо.
+        # f.write(json.dumps({'hub': hub, 'calibration' : calibPoly}))  # Пишем данные в файл.
+        f.write(json.dumps({"hub": hub, # Пишем данные в файл.
+                            "calibration" : calibPoly
+                        }))  
         print('IP settings saved!')
     # put settings to the queue for update them on main_proc_dlib
-    updateSettings(json.dumps({'hub': hub}))
+    # updateSettings(json.dumps({'hub': hub}))
+    updateSettings(json.dumps({'hub': hub, 'calibration' : calibPoly}))
     return json.dumps({'ip': ip, 'gateway': gateway, 'hub': hub})
 
 
@@ -153,6 +163,22 @@ def getPolyFromServer():
     return json.dumps(poly)
 
 
+@app.route('/getSettingsFromServer', methods=['GET', 'POST'])
+def getSettingsFromServer():
+    ''' gets settings from server'''
+    settings = None
+    filePath = path + 'settings.dat'
+    print('filePath = ', path + 'settings.dat')
+    try:
+        with open(filePath, 'r') as f:  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            settings = f.read()  # вытаскиваем рамки из файла
+    except:
+        print(u"Не удалось прочитать файл settings.dat")
+    # print('считанные настройки = ', settings)
+    updateSettings(settings)
+    return json.dumps(settings)
+
+
 @app.route('/getStatus60')
 def getStatus60():
     ''' response for client reqoest about traffic parameters fo 60 minutes'''
@@ -160,7 +186,16 @@ def getStatus60():
 
 
 @app.route('/getStatus15')
+def getStatus15():
     ''' response for client reqoest about traffic parameters fo 15 minutes'''
+    pass
+
+
+@app.route('/sendCalibrationToServer', methods=['POST'])
+def sendCalibrationToServer():
+    ''' IS IT ABSOLETE??? TO DELETE??? '''
+    ''' When finish calibration on server, put the calibration 
+        polygon points to the python'''
     pass
 
 
@@ -175,7 +210,9 @@ def updatePoly(poly):
 
 
 def updateSettings(settings):
-    ''' Updates settings in main_proc_dlib, when changes come from web client'''
+    ''' Updates settings in main_proc_dlib, when changes come from web client
+        put changes to queue '''
+    print('settings', settings)
     while not q_settings.empty():
         q_settings.get()
     if not q_settings.qsize() >= q_settings.maxsize:
@@ -184,26 +221,28 @@ def updateSettings(settings):
 
 def applyIPsettingsLinux(gate):
     """apply all the network settings, restart dcpcd service after changes on web page"""
-    _comm = os.popen("sudo ip addr flush dev eth0 && sudo systemctl restart dhcpcd.service")
-    _comm.read()
-    time.sleep(10)  # время необходимое сетевым службам чтобы рестартовать
-    routComm = os.popen("sudo route del default")  # нужно для обновления адреса шлюза по умолчанию
-    routComm.read()
-    # print('gate from change func = ', gate)
-    gwComm = os.popen("sudo route add default gw " + gate)  # нужно для обновления адреса шлюза по умолчанию
-    gwComm.read()
+    if not winMode:
+        _comm = os.popen("sudo ip addr flush dev eth0 && sudo systemctl restart dhcpcd.service")
+        _comm.read()
+        time.sleep(10)  # время необходимое сетевым службам чтобы рестартовать
+        routComm = os.popen("sudo route del default")  # нужно для обновления адреса шлюза по умолчанию
+        routComm.read()
+        # print('gate from change func = ', gate)
+        gwComm = os.popen("sudo route add default gw " + gate)  # нужно для обновления адреса шлюза по умолчанию
+        gwComm.read()
 
 
 def applyIPsettingsJetson(gate):
     """apply all the network settings, restart netw manager service after changes on web page"""
-    _comm = os.popen("sudo ip addr flush dev eth0 && sudo service network-manager restart")
-    _comm.read()
-    time.sleep(10)  # время необходимое сетевым службам чтобы рестартовать
-    routComm = os.popen("sudo route del default")  # нужно для обновления адреса шлюза по умолчанию
-    routComm.read()
-    # print('gate from change func = ', gate)
-    gwComm = os.popen("sudo route add default gw " + gate)  # нужно для обновления адреса шлюза по умолчанию
-    gwComm.read()
+    if not winMode:
+        _comm = os.popen("sudo ip addr flush dev eth0 && sudo service network-manager restart")
+        _comm.read()
+        time.sleep(10)  # время необходимое сетевым службам чтобы рестартовать
+        routComm = os.popen("sudo route del default")  # нужно для обновления адреса шлюза по умолчанию
+        routComm.read()
+        # print('gate from change func = ', gate)
+        gwComm = os.popen("sudo route add default gw " + gate)  # нужно для обновления адреса шлюза по умолчанию
+        gwComm.read()
 
 
 def change_ip_on_host(ip, gate, fname='/etc/dhcpcd.conf'):  # 129.168.0.16/24 
@@ -214,13 +253,15 @@ def change_ip_on_host(ip, gate, fname='/etc/dhcpcd.conf'):  # 129.168.0.16/24
 
 def change_ip_on_jetson(ip, gate, fname='/etc/NetworkManager/system-connections/Wired connection 1'):
     """ ONLY FOR JETSON cahanges ip, mask, gate in file /etc/NetworkManager/system-connections/Wired connection 1 """
-    file_edit_jetson(fname, ip, gate)
+    if not winMode:
+        file_edit_jetson(fname, ip, gate)
 
 
 def set_Default_IP_Settings(def_ip="192.168.0.34/24", def_gateway="192.168.0.254"):
     """ записывает новые ip и default gw в файл настроек сети и применяет их """
-    change_ip_on_jetson(def_ip, def_gateway)
-    applyIPsettingsJetson(def_gateway)  # применить все настройки перегрузить сетевые службы
+    if not winMode:
+        change_ip_on_jetson(def_ip, def_gateway)
+        applyIPsettingsJetson(def_gateway)  # применить все настройки перегрузить сетевые службы
 
 
 def gpio_button_handler(channel):
@@ -246,7 +287,7 @@ def main_process():
 
 ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
             "gateway": get_gateway(),
-            "hub": get_hub(path)
+            "hub": get_hub(path+"settings.dat")
             }
 print ('ipStatus-',ipStatus)
 
@@ -264,4 +305,4 @@ main_proc = Process(target=main_process)
 main_proc.start()
 
 if __name__ == "__main__":
-    app.run(app.run(host='0.0.0.0', port=8080, debug=False, threaded=True, use_reloader=False))
+    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True, use_reloader=False)
