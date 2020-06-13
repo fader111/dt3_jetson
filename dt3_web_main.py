@@ -13,10 +13,9 @@ from RepeatedTimer_ import RepeatedTimer
 from main_proc_dlib import *
 from conf_editor import *
 from get_net_settings import *
-
+from pprint import pprint
 
 # import RPi.GPIO as GPIO
-
 # GPIO.setmode(GPIO.BOARD)
 # GPIO.setup(7, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
@@ -42,11 +41,15 @@ app = Flask(__name__)
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    full_path = path + "settings.dat"
+
+    settings = read_setts_from_syst(full_path)
     ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
                 "gateway": get_gateway(),
-                "hub": get_hub(path+"settings.dat")
+                "hub": get_hub(full_path)
                 }
-    return render_template('index.html', ipStatus=ipStatus)
+
+    return render_template('index.html', ipStatus=ipStatus, settings=settings)
 
 
 @app.route('/video_feed')
@@ -70,9 +73,10 @@ def gen():
 
 @app.route('/sendSettingsToServer', methods=['GET', 'POST'])
 def sendSettingsToServer():
-    """ это вызывается при нажатии на кнопку "сохранить изменения" и сохраняет параметры ip на сервере """
-    print('request.form',
-          request.form)  # ImmutableMultiDict([('gateway', '192.168.0.254'), ('hub', '192.168.0.39'), ('ip', '192.168.0.16')])
+    """ calls any time, when settings change in web client, 
+        save settings to file """
+    #print('request.form',
+    #      request.form)  # ImmutableMultiDict([('gateway', '192.168.0.254'), ('hub', '192.168.0.39'), ('ip', '192.168.0.16')])
     settings_file_path = path + 'settings.dat'
     if request.method == 'POST':
         ip = request.form["ip"]
@@ -81,6 +85,8 @@ def sendSettingsToServer():
         gateway = request.form["gateway"]
         hub = request.form["hub"]
         calibPoly = request.form['calibration']
+        calib_zone_length = request.form['calib_zone_length']
+        calib_zone_width = request.form['calib_zone_width']
     ipStatus["hub"] = hub
     # print('from python: ip', ip,'  mask',mask, '  gateway',gateway,'  hub',hub)
     ip_ext = ip  # +'/24' # костыль пока маску не сделал
@@ -91,12 +97,29 @@ def sendSettingsToServer():
         # остальное - ip маска и шлюз применится в линуксе и сохранится. записывать нет надо.
         # f.write(json.dumps({'hub': hub, 'calibration' : calibPoly}))  # Пишем данные в файл.
         f.write(json.dumps({"hub": hub, # Пишем данные в файл.
-                            "calibration" : calibPoly
-                        }))  
+                            "calibration" : calibPoly,
+                            "calib_zone_length" : calib_zone_length,
+                            "calib_zone_width" : calib_zone_width
+                        }))
         print('IP settings saved!')
-    # put settings to the queue for update them on main_proc_dlib
-    # updateSettings(json.dumps({'hub': hub}))
-    updateSettings(json.dumps({'hub': hub, 'calibration' : calibPoly}))
+    # put polygones and settings to the queue for update them on main_proc_dlib
+    # need to put both, because poly depends on calibration, which are in the settings
+
+    updateSettings(json.dumps({ 'hub'               : hub, 
+                                'calibration'       : calibPoly,
+                                'calib_zone_length' : calib_zone_length,
+                                'calib_zone_width'  : calib_zone_width
+                                }))
+    time.sleep(1) # needs to be sure that settings are inplemented before polygones
+    # because settings queue is a bit slower then polygones queue ( ?? need one queue for both polygones and settings??)
+    # otherwise old calibration zode dimentions are in polygones.
+    
+    #updatePoly(json.dumps(polygones)) #похоже этого недостаточно. 
+    # тут оказываются старые полигоны, буду читать новые полигоны из файла, потом их обновлять.
+    res = json.loads(getPolyFromServer())
+    updatePoly(res)
+    
+    
     return json.dumps({'ip': ip, 'gateway': gateway, 'hub': hub})
 
 
@@ -123,7 +146,9 @@ def showStatusHub():
 
 @app.route('/sendPolyToServer', methods=['GET', 'POST'])
 def sendPolyToServer():
-    '''calls any time, when polygones change in web client'''
+    ''' calls any time, when polygones change in web client, 
+        save polygones to file
+    '''
     filePath = path + 'polygones.dat'
     if request.method == 'POST':
         print("request.get_data (poly)== ", request.get_data())
@@ -134,8 +159,8 @@ def sendPolyToServer():
             try:
                 with open(filePath, 'w') as f:
                     f.write(poly)  # Пишем данные полигонов в файл.
-                print('settings saved! path=', path)
-                '''updates polygones according to the changes'''
+                print('polygones saved! path=', path)
+                # updates polygones according to the changes
                 updatePoly(poly)
             except:
                 print(u"Не удалось сохранить файл polygones.dat")
@@ -148,6 +173,9 @@ def sendPolyToServer():
 
 @app.route('/getPolyFromServer', methods=['GET', 'POST'])
 def getPolyFromServer():
+    ''' calls when aplication starts, 
+        reads polygones from file
+    '''
     # print('polygonesFilePath = ',polygonesFilePath)
     poly = None
     filePath = path + 'polygones.dat'
@@ -158,20 +186,22 @@ def getPolyFromServer():
     except:
         print(u"Не удалось прочитать файл polygones.dat")
     # print('считанные рамки = ', poly)
-    # return json.dumps(ramki)
+    polygones = json.dumps(poly)
     updatePoly(poly)
     return json.dumps(poly)
 
 
 @app.route('/getSettingsFromServer', methods=['GET', 'POST'])
 def getSettingsFromServer():
-    ''' gets settings from server'''
+    ''' calls when aplication starts,
+        reads settings from file
+    '''
     settings = None
     filePath = path + 'settings.dat'
     print('filePath = ', path + 'settings.dat')
     try:
         with open(filePath, 'r') as f:  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            settings = f.read()  # вытаскиваем рамки из файла
+            settings = f.read()  # вытаскиваем настройки из файла
     except:
         print(u"Не удалось прочитать файл settings.dat")
     # print('считанные настройки = ', settings)
@@ -200,7 +230,7 @@ def sendCalibrationToServer():
 
 
 def updatePoly(poly):
-    ''' Updates polygones, when changes come from web client'''
+    ''' Updates polygones, during start or when changes come from web client'''
     polygones = poly
     # print(f'polygones {polygones}')
     while not q_ramki.empty():  # перед помещением в очередь чистим ее
@@ -289,13 +319,17 @@ ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
             "gateway": get_gateway(),
             "hub": get_hub(path+"settings.dat")
             }
-print ('ipStatus-',ipStatus)
+print ('ipStatus-', ipStatus)
+
+
 
 # шлем статус сработки детектора на контроллер , концентратор. раз в 400 мс.
 # rtUpdStatusForHub = RepeatedTimer(0.4, sendDetStatusToHub)  # обновляем статус для Hub'a раз в 400 мс
 # rtUpdStatusForHub.start()
-
 # в параллельном процессе запускаем все вычисления
+
+settings = read_setts_from_syst(path + "settings.dat")
+polygones = read_polygones_from_file(path + "polygones.dat")
 
 frame = np.zeros((512,512,3), np.uint8) # пустая картинка при старте
 font = cv2.FONT_HERSHEY_SIMPLEX

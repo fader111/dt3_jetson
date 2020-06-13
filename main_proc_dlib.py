@@ -23,13 +23,16 @@ from track_dlib import Track
 from dlib import correlation_tracker
 from shapely.geometry import Point, Polygon, box
 from detect_zones import Ramka
+from transform import four_point_transform, order_points2, windowToFieldCoordinates
+# import requests
 # import Jetson.GPIO as GPIO
 
 # cascade_path = 'vehicles_cascadeLBP_w25_h25_p2572_n58652_neg_roof.xml'
 # cascade_path = 'vehicle_cascadeLBP_w20_h20_p2139.xml'
 
 q_pict = Queue(maxsize=5)       # queue for web picts
-q_settings = Queue(maxsize=5)   # queue for ip and other settings to sent from web client to python
+# queue for ip and other settings to sent from web client to python
+q_settings = Queue(maxsize=5)
 q_ramki = Queue(maxsize=5)      # polygones paths
 q_status = Queue(maxsize=5)     # current status of process for web.
 
@@ -45,13 +48,14 @@ network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
 network = network_lst[1]
 
 threshold = 0.2         # 0.2 for jetson inference object detection
-iou_tresh_perc = 10     # tresh for cnn detection bbox and car detecting zone intersection in percents
+# tresh for cnn detection bbox and car detecting zone intersection in percents
+iou_tresh_perc = 10
 width = 1920            # 640 width settings for camera capturing
 height = 1080           # 480 height for the same
-proc_width = 640        # x size of window for processing with CNN 
+proc_width = 640        # x size of window for processing with CNN
 proc_height = 480       # y size
 # camera_src = '/dev/video1'  # for USB camera
-# camera_src = '0'  # for sci Gstreamer 
+# camera_src = '0'  # for sci Gstreamer
 # camera = jetson.utils.gstCamera(width, height, camera_src) # also possible capturing way
 overlay = "box,labels,conf"
 print("[INFO] loading model...")
@@ -63,9 +67,9 @@ resolution_str = str(cur_resolution[0]) + 'x' + str(cur_resolution[1])
 
 
 visual = True  # visual mode
-winMode = False # debug mode for windows - means that we are in windows now
+winMode = False  # debug mode for windows - means that we are in windows now
 
-if 'win' in sys.platform: 
+if 'win' in sys.platform:
     proj_path = 'C:/Users/ataranov/Projects/dt3_jetson/'  # путь до папки проекта
     winMode = True
 else:
@@ -75,7 +79,7 @@ else:
 if 'win' in sys.platform:
     video_src = "G:/U524802_1_695_0_new.avi"
 else:
-    video_src = "/home/a/Videos/U524802_1_695_0_new.avi" # 2650 x 2048
+    video_src = "/home/a/Videos/U524802_1_695_0_new.avi"  # 2650 x 2048
 # video_src = '/home/a/Videos/lenin35_640.avi' # h 640
 # video_src = "/home/a/dt3_jetson/jam_video_dinamo.avi" gets some distorted video IDKW
 # video_src = "http://95.215.176.83:10090/video30.mjpg?resolution=&fps="
@@ -94,7 +98,8 @@ if USE_CAMERA:
 else:
     detect_phase_period = 5  # detection phase period in frames
 
-iou_tresh = 0.2  # treshold for tracker append criteria 0.4 less- more sensitive, more mistakes
+# treshold for tracker append criteria 0.4 less- more sensitive, more mistakes
+iou_tresh = 0.2
 
 # only for sci camera
 # framerate=(fraction)60/1 - optimum rate
@@ -110,7 +115,7 @@ camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(wid
         videoconvert ! video/x-raw, format=(string)BGR ! appsink"
 
 poligones_filepath = proj_path + 'polygones.dat'
-settings_filepath  = proj_path + 'settings.dat'
+settings_filepath = proj_path + 'settings.dat'
 
 
 def read_setts_from_syst(filePath):
@@ -119,10 +124,12 @@ def read_setts_from_syst(filePath):
     '''
     # print ('filePath' + filePath)
     settings_ = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
-                "gateway": get_gateway(),
-                "hub": get_hub(filePath),
-                "calibration":get_settings(filePath)["calibration"]
-            }
+                 "gateway": get_gateway(),
+                 "hub": get_hub(filePath),
+                 "calibration": get_settings_from_file(filePath)["calibration"],
+                 "calib_zone_length": get_settings_from_file(filePath)["calib_zone_length"],
+                 "calib_zone_width": get_settings_from_file(filePath)["calib_zone_width"]
+                 }
     return settings_
 
 
@@ -131,7 +138,7 @@ def read_polygones_from_file(filePath):
         filePath = full path to polygones.dat '''
     try:
         with open(filePath, 'r') as f:
-            poligs = f.read()  
+            poligs = f.read()
         print(f'polygones read from file: {poligs}')
         return json.loads(poligs)
     except:
@@ -139,15 +146,16 @@ def read_polygones_from_file(filePath):
         return {}
 
 
-def send_det_status_to_hub(addrString, det_status):  
+def send_det_status_to_hub(addrString, det_status):
     # передача состояний рамок на концентратор методом POST
     # addrString = 'http://' + hubAddress + '/detect'
     # must be a list to get an argument as a reference
     # print('                              hub ', addrString, det_status)
 
     try:
-        requests.get(addrString[0], timeout=(0.1, 0.1))
-        ans = requests.post(addrString, json={"cars_detect": det_status}) 
+        pass
+        # requests.get(addrString[0], timeout=(0.1, 0.1))
+        # ans = requests.post(addrString, json={"cars_detect": det_status})
         # return ans.text
     except:
         pass
@@ -178,49 +186,82 @@ def proc():
     else:
         cap = cv2.VideoCapture(video_src)
 
-
     # prev_bboxes = []  # bboxes to draw from previous frame
     key_time = 1
     new_tr_number = 0   # for tracks numeration
     frm_number = 0
     ramki_scaled = []   # ramki scaled mass for Instances of Ramka
-    ramki_status = []   # mass of 0 and 1 for send to hub as json, len = len(ramki_scaled), 0 if ramka off, 1 - if on
+    # mass of 0 and 1 for send to hub as json, len = len(ramki_scaled), 0 if ramka off, 1 - if on
+    ramki_status = []
     # need to have only one reference, thats why below fild created.
-    ramki_status_ = []  # copy of ramki status to sent to repeated timer for sending to hub. 
+    # copy of ramki status to sent to repeated timer for sending to hub.
+    ramki_status_ = []
 
     bboxes = []
     tracks = []         # list for Track class instances
     stop_ = False       # aux for detection break
     polygon_sc = []     # scaled polygon points
     calibrPoints = []   # list of points of calibration Polygon on road
-    calibrPoints_sc = []# scaled list of points of calibration Polygon
+    calibrPoints_sc = []  # scaled list of points of calibration Polygon
     w_web = 800         # web picture width
     h_web = 600         # web picture hight
-    
-    # Init polygones at start processing
-    polygones = read_polygones_from_file(poligones_filepath) # json c рамками и направлениями
+
+    ### main preparation section ###
+
+    # read detection zone areas (polygones) from polygones
+    # read settings from file
+    polygones = read_polygones_from_file(
+        poligones_filepath)  # json c рамками и направлениями
     ramki_status = [0 for i in range(len(polygones["polygones"]))]
-    ramki_status_ =[0 for i in range(len(polygones["polygones"]))]
+    ramki_status_ = [0 for i in range(len(polygones["polygones"]))]
     # Init ip and other settings from system
     settings = read_setts_from_syst(proj_path + "settings.dat")
 
-    # before start 
+    # calibration polygon point Init
+    if ("calibration") in settings:
+        calibrPoints = json.loads(settings["calibration"])
+        # scaled polygones
+        calibrPoints_sc = [[x*proc_width//w_web, y*proc_height//h_web]
+                           for x, y in calibrPoints]
+
+    # make transform matrix, hight and width of Top view of callibration polygon -
+    # means make the rectangle from the polygone
+    black_img = np.zeros((h_web, w_web, 3), np.uint8)
+    np_calibrPoints_sc = np.array(calibrPoints_sc, dtype="float32")
+    M, warped_width_px, warped_height_px = four_point_transform(
+        black_img, np_calibrPoints_sc, picMode=False)
+    warp_dimentions_px = warped_width_px, warped_height_px
+
+    # get calibration zone settings - width and length in meters from settings file
+    calib_area_length_m = float(settings['calib_zone_length'])
+    calib_area_width_m = float(settings['calib_zone_width'])
+    calib_area_dimentions_m = calib_area_width_m, calib_area_length_m
+
+    # create all the detection zones objects
     if ("polygones") in polygones:
         w_web, h_web = polygones["frame"]
         for k, polygon in enumerate(polygones["polygones"]):
-            polygon_sc = [[x*proc_width//w_web, y*proc_height//h_web] for x, y in polygon]
-            ramki_scaled.append(Ramka(polygon_sc, polygones["ramkiDirections"][k], proc_height))
+            polygon_sc = [[x*proc_width//w_web, y*proc_height//h_web]
+                          for x, y in polygon]
+            # scaled means fitted to web view
+            ramki_scaled.append(
+                Ramka(polygon_sc,                         # scaled polygon vertex
+                      warp_dimentions_px,                 # width, height Top view of calibration zone
+                      calib_area_dimentions_m,            # width, height of calibration zone in meter
+                      M,                                  # transition matrix
+                      polygones["ramkiDirections"][k],    # directions
+                      proc_height                         # CNN process window hight
+                      ))
+    # ramki_scaled
+    # calculation distanses of up and down side of detecting areas
 
-    if ("calibration") in settings:
-        calibrPoints = json.loads(settings["calibration"])
-        calibrPoints_sc = [[x*proc_width//w_web, y*proc_height//h_web] for x, y in calibrPoints]
-    
-    # status of process must send to hub - device wich convert detector packets to the 
+    # status of process must send to hub - device wich convert detector packets to the
     # physical signals. Do it with repeated timer. Update each 400ms
-    
+
     addrString = ['http://' + settings["hub"] + '/detect']
 
-    rtUpdStatusForHub = RepeatedTimer(0.4, send_det_status_to_hub, addrString, ramki_status_)
+    rtUpdStatusForHub = RepeatedTimer(
+        0.4, send_det_status_to_hub, addrString, ramki_status_)
     rtUpdStatusForHub.start()
 
     while True:
@@ -251,7 +292,7 @@ def proc():
         orig_img = img
         while not ret:
             ret, img = cap.read()
-            print ('wait..')
+            print('wait..')
         img = cv2.resize(img, (proc_width, proc_height))
         # img = cv2.resize(img, (800, 604))
         height, width = img.shape[:2]
@@ -262,15 +303,17 @@ def proc():
 
         # give roi. Roi cuted upper part of frame
         up_bord = int(0.2*height)
-        img_c = img#[up_bord:height, 0:width]
+        img_c = img  # [up_bord:height, 0:width]
 
         # img_c = img_c[0:height, 0:int(width/5)]
 
         height, width = img_c.shape[:2]
         # cv2.line(img, (0, up_bord), (width, up_bord), 255, 1)
 
-        frame_show = frame = img_c # frame_show only for display on interface with texts, rectangles and labels
-        frame_show = np.copy(frame_show) # separate frame_show to another object
+        # frame_show only for display on interface with texts, rectangles and labels
+        frame_show = frame = img_c
+        # separate frame_show to another object
+        frame_show = np.copy(frame_show)
 
         # needs for cuda to add new one channel
         img_c = cv2.cvtColor(img_c, cv2.COLOR_BGR2RGBA)  # ogiginal variant
@@ -313,9 +356,10 @@ def proc():
                     class_string = f'{CLASSES[detection.ClassID]} - {detection.Confidence:.2f}'
                 else:
                     class_string = ('wtf?')
-                    continue # go 
-                
-                cv2.putText(frame_show, class_string, (x1+1, y1-4), cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 1)
+                    continue  # go
+
+                cv2.putText(frame_show, class_string, (x1+1, y1-4),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 1)
                 cv2.rectangle(frame_show, (x1, y1), (x2, y2), green, 1)
                 # if detection.ClassID == 3: # car in coco
                 # print ('car detection confidence -', detection.Confidence)
@@ -332,7 +376,8 @@ def proc():
                         stop_ = True  # prevent creating new track object
                         if not bbox_touch_the_border(bbox, height, width):
                             bboxes.append(bbox)
-                            track.renew(frame, bbox, detection.ClassID, detection.Confidence)
+                            track.renew(
+                                frame, bbox, detection.ClassID, detection.Confidence)
                         else:
                             # mark this track as completed, don't update it anymore
                             track.complete = True
@@ -341,7 +386,8 @@ def proc():
                 if stop_:
                     break
                 # or, if bbox didn't assingned to any track, create a new track
-                tracks.append(Track(frame, bbox, new_tr_number, detection.ClassID, detection.Confidence))
+                tracks.append(Track(frame, bbox, new_tr_number,
+                                    detection.ClassID, detection.Confidence))
                 new_tr_number += 1
                 if new_tr_number > 99:
                     new_tr_number = 0
@@ -353,14 +399,15 @@ def proc():
                 if not track.complete:
                     track.update(frame)
                     x1, y1, x2, y2 = track.boxes[-1]
-                    
+
                     if track.class_id in CLASSES:
                         # conf = round(detection.Confidence,2)
                         class_string = f'{CLASSES[track.class_id]} - {track.confidence:.2f}'
                     else:
                         class_string = ('wtf?')
-                    
-                    cv2.putText(frame_show, class_string, (x1+1, y1-4), cv2.FONT_HERSHEY_SIMPLEX, 0.6, purple, 1)
+
+                    cv2.putText(frame_show, class_string, (x1+1, y1-4),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, purple, 1)
                     cv2.rectangle(frame_show, (x1, y1), (x2, y2), purple, 1)
 
         wframe = frame  # .copy()
@@ -373,7 +420,7 @@ def proc():
             # if max track life time is over, or track isn't appended for more than 1 sec, del it
             if (now - track.ts > max_track_lifetime) | \
                 ((now - track.ts > 3) & (len(track.boxes) < 3)) | \
-                (now - track.renew_ts > 40):
+                    (now - track.renew_ts > 40):
                 if key_time != 0:  # when video capturing stops tracks don't delete
                     tracks.remove(track)
 
@@ -389,50 +436,74 @@ def proc():
                 fps = ' inf...'
         else:
             fps = ' ***'
-        # draw detecting zones q_ramki - Queue, if the are new detecting areas, they are in 
-        # this queue
+
+        # get polygones from flask process
+        # when polygones change on web, it always translate to calc process
+        # using Queue
         if not q_ramki.empty():
             # here it comes as a string, so convert
-            polygones = json.loads(q_ramki.get()) # not zoomed right 
+            polygones = json.loads(q_ramki.get())  # not zoomed right
+            # update calibration settings
+            calib_area_length_m = float(settings['calib_zone_length'])
+            calib_area_width_m = float(settings['calib_zone_width'])
+            calib_area_dimentions_m = calib_area_width_m, calib_area_length_m
             # calculate polygones coordinates in scale
             ramki_scaled = []
             y_size, x_size = wframe.shape[:2]
             if ("polygones") in polygones:
                 w_web, h_web = polygones["frame"]
                 for k, polygon in enumerate(polygones["polygones"]):
-                    polygon_sc = [[x*x_size//w_web, y*y_size//h_web] for x, y in polygon]
-                    ramki_scaled.append(Ramka(polygon_sc, polygones["ramkiDirections"][k], y_size))
+                    polygon_sc = [[x*x_size//w_web, y*y_size//h_web]
+                                  for x, y in polygon]
+                    
+                    ramki_scaled.append(
+                        Ramka(polygon_sc,                       # scaled polygon vertex
+                            warp_dimentions_px,                 # width, height Top view of calibration zone
+                            calib_area_dimentions_m,            # width, height of calibration zone in meter
+                            M,                                  # transition matrix
+                            polygones["ramkiDirections"][k],    # directions
+                            proc_height                         # CNN process window hight
+                            ))
+                    
+            # dlym = ramki_scaled[2].down_limit_y_m
             # print(f'ramki scaled {ramki_scaled}')
             # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
             ramki_status = [0 for i in range(len(ramki_scaled))]
-            # when lenght ramki_status changed do below, can't remove ramki_status_ object, 
+            # when lenght ramki_status changed do below, can't remove ramki_status_ object,
             # because need to save it's reference fo repeated timer
-            while len(ramki_status_)>len(ramki_status):
+            while len(ramki_status_) > len(ramki_status):
                 ramki_status_.pop()
-            while len(ramki_status_)<len(ramki_status):
+            while len(ramki_status_) < len(ramki_status):
                 ramki_status_.append(0)
-        
+
         # get settings from flask process
+        # when setting change on web, it always translate to calc process
+        # using Queue
         if not q_settings.empty():
             y_size, x_size = wframe.shape[:2]
             settings = json.loads(q_settings.get())
             addrString[0] = 'http://' + settings["hub"] + '/detect'
             calibrPoints = json.loads(settings["calibration"])
-            calibrPoints_sc = [[x*x_size//w_web, y*y_size//h_web] for x, y in calibrPoints]
+            calibrPoints_sc = [[x*x_size//w_web, y*y_size//h_web]
+                               for x, y in calibrPoints]
             print('calibrPoints scaled', calibrPoints_sc)
+            calib_area_length_m = float(settings['calib_zone_length'])
+            calib_area_width_m = float(settings['calib_zone_width'])
+            calib_area_dimentions_m = calib_area_width_m, calib_area_length_m
 
         ### Changing zone colors ###
         # If any track point is inside the detecting zone - change it's state to On.
         # use shapely lib to calculate intersections of polygones (good lib)
         for i, ramka in enumerate(ramki_scaled):
-            ramka.color = 0 # for each ramka before iterate for frames, reset it 
-            ramki_status[i]=0
-            # if some track below cross, it,  it woll be on for whole frame. 
+            ramka.color = 0  # for each ramka before iterate for frames, reset it
+            ramki_status[i] = 0
+            # if some track below cross, it,  it woll be on for whole frame.
             for track in tracks:
                 if not track.complete:
-                    shapely_box = box(track.boxes[-1][0], track.boxes[-1][1], track.boxes[-1][2], track.boxes[-1][3])
-                    # interscec_ = ramka.shapely_path.intersection(shapely_box).area/ramka.area*100
-                    interscec_ = ramka.shapely_path.intersection(shapely_box).area/ramka.area*100
+                    shapely_box = box(
+                        track.boxes[-1][0], track.boxes[-1][1], track.boxes[-1][2], track.boxes[-1][3])
+                    interscec_ = ramka.shapely_path.intersection(
+                        shapely_box).area/ramka.area*100
                     if (interscec_ > iou_tresh_perc):
                         # here need to check if track points are in detecting zone, and only then swith it on
                         # iterate for points in track, check if point inside the zone
@@ -445,27 +516,98 @@ def proc():
         # then draw polygones with arrows
         for i, ramka in enumerate(ramki_scaled):
             color_ = green if ramka.color == 1 else blue
-            cv2.putText(frame_show, str(i+1), (ramka.center[0]-5, ramka.center[1]+5), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_, 2)
-            # draw polygones 
-            cv2.polylines(frame_show, np.array([ramka.path], np.int32), 1, color_, 3)
+            cv2.putText(frame_show, str(i+1), (ramka.center[0]-5, ramka.center[1]+5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_, 2)
+            # draw polygones
+            cv2.polylines(frame_show, np.array(
+                [ramka.path], np.int32), 1, color_, 3)
             # draw arrows
             # for j, arrow in enumerate(poly):
             for j in range(4):
-                if ramka.directions[j] ==1:
-                    cv2.polylines(frame_show, np.array([ramka.arrows_path[j]]), 1, color_, 2)
-        
-        ### do the transform calibration polygone 
+                if ramka.directions[j] == 1:
+                    cv2.polylines(frame_show, np.array(
+                        [ramka.arrows_path[j]]), 1, color_, 2)
+            # draw ramki sides distances from the calibration polygone in meters
+            cv2.putText(frame_show, f'{ramka.up_limit_y_m:.1f}', ramka.up_side_center,
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, white, 1)
+            cv2.putText(frame_show, f'{ramka.down_limit_y_m:.1f}', ramka.down_side_center,
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, white, 1)
 
+        # do the transform calibration polygone to get top View
+        # if top view image needed, WITH_TOP_VIEW_IMG = True
+        WITH_TOP_VIEW_IMG = False
 
-        # draw calibration polygone 
+        # show the warped calibration polygone area
+        np_calibrPoints_sc = np.array(calibrPoints_sc, dtype="float32")
+        # np_calibrPoints_sc = np.array(calibrPoints_sc)
+        # get top view
+        if WITH_TOP_VIEW_IMG:
+            warped_img, M = four_point_transform(
+                frame_show, np_calibrPoints_sc, picMode=True)
+            warped_width_px = warped_img.shape[1]
+            warped_height_px = warped_img.shape[0]
+        else:
+            # another way without picture, only required params
+            M, warped_width_px, warped_height_px = four_point_transform(
+                frame_show, np_calibrPoints_sc, picMode=False)
+
+        # convert point coord on the perspective view (originalPoint) to the point coordinates
+        # on the Top view. Where perspectiveCoords - 4 point of calib Polygon in perspective,
+        # width, hight - in pixels for the 2D top-view field.
+
+        #windowToFieldCoordinates(originalPoint, perspectiveCoords, width=0, height=0)
+        # windowToFieldCoordinates(originalPoint, perspectiveCoords, width=0, height=0)
+        # нарисуем кружочек на картинке с перспективой
+        # это точки - середины ближней и дальней поперечных планок рамки
+
+        # для каждой рамки вычислим в метрах от края калибровочного полигона ее
+        # ее верхнюю и нижнюю границу
+
+        '''
+        # NOTE! это надо сделать на этапе инициализации рамки или после ее изменения. см пояснения в wiki
+        for i, ramka in enumerate(ramki_scaled):
+            # взять настройку длины зоны из settings и
+            # считать метры от края через пропорцию, Ym/Lm = up_side_center/warped_height
+            up_limit_y_px = ramka.up_side_center[1]
+            down_limit_y_px = ramka.down_side_center[1]
+            # Ym = up_limit_px/warped_height_px*calib_area_length_m
+            ramka.up_limit_y_m = up_limit_y_px/warped_height_px*calib_area_length_m
+            ramka.down_limit_y_m = down_limit_y_px/warped_height_px*calib_area_length_m
+
+        top_point = (226, 84)
+        down_point = (268, 207)
+        cv2.circle(frame_show, top_point, 2, green, 2)
+        cv2.circle(frame_show, down_point, 2, green, 2)
+        # print("M", M)
+        # посчитаем координаты кружочка в топвью плоскости и отобразим на варпед картинке
+        top_point_np3D = np.array([((top_point[0], top_point[1]), (
+            top_point[0], top_point[1]), (top_point[0], top_point[1]))], dtype=np.float32)
+        down_point_np3D = np.array([((down_point[0], down_point[1]), (
+            down_point[0], down_point[1]), (down_point[0], down_point[1]))], dtype=np.float32)
+        trans_point_top = cv2.perspectiveTransform(top_point_np3D, M)[0][0]
+        trans_point_down = cv2.perspectiveTransform(down_point_np3D, M)[0][0]
+        # сошлось, надо же
+
+        # ramki_scaled[0].up_limit_y_m = trans_point_top[1]/warped_height_px*calib_area_length_m
+        up_limit_y_m = trans_point_top[1]/warped_height_px*calib_area_length_m
+        # ramki_scaled[0].down_limit_y_m = trans_point_down[1]/warped_height_px*calib_area_length_m
+        down_limit_y_m = trans_point_down[1]/warped_height_px*calib_area_length_m
+        '''
+        # draw calibration polygone
+        zero_point = (calibrPoints_sc[0][0]-15, calibrPoints_sc[0][1]+5)
+        width_point = (calibrPoints_sc[1][0]+8, calibrPoints_sc[1][1]+5)
+        length_point = (calibrPoints_sc[3][0]-35, calibrPoints_sc[3][1]+5)
+        cv2.putText(frame_show, "0", zero_point,
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 2)
+        cv2.putText(frame_show, str(calib_area_width_m), width_point,
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 2)
+        cv2.putText(frame_show, str(calib_area_length_m), length_point,
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 2)
         cv2.polylines(frame_show, np.array([calibrPoints_sc]), 1, green, 1)
-
-
-
-        # Time Per Frame to show on the web
-        tpf = int((time.time()-tss)*1000) 
         
+        # Time Per Frame to show on the web
+        tpf = int((time.time()-tss)*1000)
+
         if frm_number < 5:
             tpf_midle = tpf
         elif frm_number > 200:
@@ -483,7 +625,14 @@ def proc():
             # cv2.imshow("Frame", wframe)
             cv2.imshow("Frame", frame_show)
 
-            put_queue(q_pict, frame_show)  # put the picture for web in the picture Queue
+            if WITH_TOP_VIEW_IMG:
+                # warped image show
+                cv2.namedWindow("warped", cv2.WINDOW_NORMAL)
+                # cv2.imshow("Frame", wframe)
+                cv2.imshow("warped", warped_img)
+
+            # put the picture for web in the picture Queue
+            put_queue(q_pict, frame_show)
             key = cv2.waitKey(key_time) & 0xFF
             # if the `ESC` key was pressed, break from the loop
             if key == 27:
@@ -497,13 +646,11 @@ def proc():
         if frm_number % 10 == 0:
             # print(f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks)}')
             pass
-        
 
         # if memmon:
         #     print("[ Top 10 ]")
         #     for stat in top_stats[:10]:
         #         print(stat)
-
 
     cap.release()
     cv2.destroyAllWindows()

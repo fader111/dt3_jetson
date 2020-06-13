@@ -6,6 +6,7 @@ blue = (255, 0, 0)  # BGR format
 green = (0, 255, 0)
 red = (0, 0, 255)
 purple = (255, 0, 255)
+white = (255,255,255)
 
 CLASSES = {6:"bus", 3:"car", 8:"truck", 4:"motorcicle"}
 

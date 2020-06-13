@@ -459,12 +459,12 @@ window.onload = function () {
                                     //console.log("this.attr(x,y) = ",this.attr("x"),this.attr("y"));
                                     //console.log("numOfRect =  ",numOfRect);
                                     if (x > 0 && x < W) {
-                                        new_path[numOfRect][1] = x;
-                                        this.attr({ x: x - 10 });
+                                        new_path[numOfRect][1] = Math.round(x);
+                                        this.attr({ x: Math.round(x - 10) });
                                     }
                                     if (y > 0 && y < H) {
-                                        new_path[numOfRect][2] = y;
-                                        this.attr({ y: y - 10 });
+                                        new_path[numOfRect][2] = Math.round(y);
+                                        this.attr({ y: Math.round(y - 10) });
                                     }
                                     polygones[k - 1].attr({ path: new_path });
                                     assygnPolygonNumber();
@@ -554,8 +554,8 @@ window.onload = function () {
                         if (arrows != null) arrows.remove();
                         path_ = this.attr("path");
                         for (i = 0; i < 4; i++) {
-                            if (minx + dx > 0 && maxx + dx < W) path_[i][1] = begin_path[i][1] + dx; // если углы полигона не выходят за края окна, двигаем его по x
-                            if (miny + dy > 0 && maxy + dy < H) path_[i][2] = begin_path[i][2] + dy; // и по y
+                            if (minx + dx > 0 && maxx + dx < W) path_[i][1] = begin_path[i][1] + Math.round(dx); // если углы полигона не выходят за края окна, двигаем его по x
+                            if (miny + dy > 0 && maxy + dy < H) path_[i][2] = begin_path[i][2] + Math.round(dy); // и по y
                         }
                         ;
                         this.attr({ path: path_ });
@@ -685,7 +685,8 @@ window.onload = function () {
     //.mousemove(function(x,y){console.log("k=!=!=",k);});
     var delButton = document.getElementById('delButton');
 
-    //delButton.onclick = function delete_all(){
+    delButton.onclick = delete_all
+
     function delete_all() {
         //var ret = confirm('Стереть?');
         if (editMode != 0) {
@@ -702,17 +703,16 @@ window.onload = function () {
             modes_poly.remove();
             //*/
             //r.clear(); // с этой байдой почему-то не начинает рисовать новые рамки сразу после нажатия "удалить все".
+            req = convertPolyToString(polygones, W, H, modes_poly, ramkiArrows);
             sendPolyToServer(req);
             k = 0;//k=1;
         }
         else notEditModeAlert();
     }
-    delButton.onclick = function () {
-        delete_all();
-    }; // без кавычек в такой записи нельзя: будет ошибка unexpected identifier
-    //*
+
     var editButton = document.getElementById('editButton');
-    editButton.onclick = function () {
+    editButton.onclick = editButtonOnclick;
+    function editButtonOnclick() {
         if (editMode == 0) { 	// если не в режиме редактирования,
             editMode = 1;	// то включить р.р.
             editButton.value = 'Сохранить';
@@ -783,6 +783,8 @@ window.onload = function () {
     var ip_netmask = document.getElementById("ip_netmask");
     var ip_address_gateway = document.getElementById("ip_address_gateway");
     var ip_address_hub = document.getElementById("ip_address_hub");
+    var calib_zone_length = document.getElementById("calib_zone_length");
+    var calib_zone_width = document.getElementById("calib_zone_width");
 
     calibRects = rc.set(); //квадраты по углам
     // calib_path = ["M200,100 L600,100 L600,500 L200,500 Z"];//[];
@@ -860,11 +862,11 @@ window.onload = function () {
                                     }
                                     if (x > 0 && x < W) {
                                         new_path[numOfRect][1] = x;
-                                        this.attr({ x: x - 10 });
+                                        this.attr({ x: Math.round(x - 10) });
                                     }
                                     if (y > 0 && y < H) {
                                         new_path[numOfRect][2] = y;
-                                        this.attr({ y: y - 10 });
+                                        this.attr({ y: Math.round(y - 10) });
                                     }
                                     calibPolygone.attr({ path: new_path });
                                 })
@@ -880,28 +882,29 @@ window.onload = function () {
                     }
                     //console.log("polygones.length=",polygones.length);
                 })
-                .dblclick(function () {  // по двойному клику удаляется полигон
-                    if (calibrationMode == 1) {
-                        // pnumber= this.data("polygonNumber"); // номер полигона, который мочим, пригодится.
-                        // if (nums_poly != null) nums_poly.remove();
-                        this.remove(); // удаляет прямоугольник
+                // .dblclick(function () {  // по двойному клику удаляется полигон временно отключено, т.к. после удаления 
+                // сыпятся настройки всех созданных рамок
+                //     if (calibrationMode == 1) {
+                //         // pnumber= this.data("polygonNumber"); // номер полигона, который мочим, пригодится.
+                //         // if (nums_poly != null) nums_poly.remove();
+                //         this.remove(); // удаляет прямоугольник
 
-                        // polygones.splice(this.start.k - 1, 1); //polygones.pop(1); // удаляет элемент из массива полигонов
-                        if (calibRects != null) calibRects.remove();
-                        pathList = this.attr("path"); // сюда перед удалением сгрузим все path всех полигонов
-                    }
-                    else {
-                        // notEditModeAlert();
-                    }
-                })
+                //         // polygones.splice(this.start.k - 1, 1); //polygones.pop(1); // удаляет элемент из массива полигонов
+                //         if (calibRects != null) calibRects.remove();
+                //         pathList = this.attr("path"); // сюда перед удалением сгрузим все path всех полигонов
+                //     }
+                //     else {
+                //         // notEditModeAlert();
+                //     }
+                // })
                 .drag(function (dx, dy, x, y) {
                     if (calibrationMode == 1) {
                         if (calibRects != null) calibRects.remove();
                         //            if (arrows != null) arrows.remove();
                         path_ = this.attr("path");
                         for (i = 0; i < 4; i++) {
-                            if (minx + dx > 0 && maxx + dx < W) path_[i][1] = begin_path[i][1] + dx; // если углы полигона не выходят за края окна, двигаем его по x
-                            if (miny + dy > 0 && maxy + dy < H) path_[i][2] = begin_path[i][2] + dy; // и по y
+                            if (minx + dx > 0 && maxx + dx < W) path_[i][1] = begin_path[i][1] + Math.round(dx); // если углы полигона не выходят за края окна, двигаем его по x
+                            if (miny + dy > 0 && maxy + dy < H) path_[i][2] = begin_path[i][2] + Math.round(dy); // и по y
                         };
                         this.attr({ path: path_ });
                     }
@@ -925,6 +928,11 @@ window.onload = function () {
     };
 
     function pushSettings() {
+        //if editMode, swith it off, calling editButtonOnclick function
+        if (editMode == 1) editButtonOnclick();
+        // req = convertPolyToString(polygones, W, H, modes_poly, ramkiArrows); // modes_poly здесь это r.set
+        // sendPolyToServer(req);
+        console.log("polygones length = ", polygones.length);
         // prepares data to send settings to server
         if (calibPolygone[0] != null) { //так можо проверить если полигон удалили даблкликом
             // console.log('calibPolygone-----', calibPolygone);
@@ -947,7 +955,9 @@ window.onload = function () {
             "ip": ip_address.value,
             "gateway": ip_address_gateway.value,
             "hub": ip_address_hub.value,
-            "calibration": JSON.stringify(calibrationPoints)
+            "calibration": JSON.stringify(calibrationPoints),
+            "calib_zone_length": calib_zone_length.value,
+            "calib_zone_width": calib_zone_width.value
         };
         sendSettingsToServer(arg);
     };

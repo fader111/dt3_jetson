@@ -4,7 +4,6 @@
 function create_path(dx,dy,x,y){
 	//console.log("pt=",pt);
 	var pt; // тут нельзя этого писать так передается масссив всех полигонов, надо его передавать как параметр
-	
 	var stSize =50; // размеры вновь создаваемого полигона 
 	if (dx<stSize&dy<stSize) pt = ["M", x0, y0, "L",x0+stSize,y0,"L",x0+stSize,y0+stSize,"L",x0,y0+stSize,"Z"].concat(pt);
 	else if (dx<stSize) pt = ["M", x0, y0, "L",x0+stSize,y0,"L",x0+stSize,y,"L",x0,y,"Z"].concat(pt);
@@ -41,6 +40,8 @@ function sendSettingsToServer(req){
 		// data: $('form').serialize(),
 		data: req,
 		type: 'POST',
+		// processData: false,
+		// contentType: false,
 		success: function(response) {
 			// var json = jQuery.parseJSON(response)
 			// console.log(response); // {"ip": "/0", "gateway": "", "hub": "0.0.0.0"}

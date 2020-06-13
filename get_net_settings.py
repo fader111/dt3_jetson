@@ -36,9 +36,10 @@ def get_hub(filePath):
     return data['hub']  # возвращает hub
 
 
-def get_settings(file_path):
+def get_settings_from_file(file_path):
     ''' gets settings from file'''
-    data = {'hub': '0.0.0.0', "calibration":"[[200,100],[600,100],[600,500],[200,500]]"}  # на случай, если файл не откроется
+    # на случай, если файл не откроется
+    data = {'hub': '0.0.0.0', "calibration":"[[200,100],[600,100],[600,500],[200,500]]"}  
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)

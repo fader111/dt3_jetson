@@ -16,7 +16,6 @@
     <script type=text/javascript src="{{ url_for('static', filename='bootstrap.min.js') }}"></script>
     <script type=text/javascript src="{{ url_for('static', filename='detector.js') }}"></script>
     <script type=text/javascript src="{{ url_for('static', filename='transform.js') }}"></script>
-
 </head>
 <body>
 <div id="logo"><img src="{{ url_for('static', filename='logo.png') }}" style="width:100px;height:33px;margin-left:50px;position: absolute;"/></div>
@@ -58,7 +57,7 @@
     <!-- <div style="float:top ; margin-top: 20px; position: relative;"> -->
     <div style="float: right; left: 1px; top: 0px; width:100px;height:100px;position: relative">
         <p><button style="width:178px" type="button" id="editButton" value="Редактировать" class="btn btn-primary">Редактировать</button></p>
-        <p><button style="width:178px" type="button" id="delButton" value="Удалить все" class="btn btn-primary" disabled="true">Удалить все</button></p>
+        <p><button style="width:178px" type="button" id="delButton" value="Удалить все" class="btn btn-primary" disabled="true">Удалить зоны</button></p>
         <!-- <input type="button" name="camSettingsButton" id="camSettingsButton" value="Настройки детектора" class="button"/><br> -->
         <!-- Кнопка, вызывающее модальное окно -->
         <p><a style="width:178px" href="#settings_modal" class="btn btn-primary" data-toggle="modal">Настройки детектора</a></p>
@@ -84,16 +83,16 @@
               <table class="table" style="text-align: left; font:14px Arial, Helvetica, sans-serif;" border="0" cellpadding="1" cellspacing="1">
             <tbody>
               <tr>
-                            <td style="width:500px">IP адрес камеры:</td>
+                            <td style="width:500px">IP адрес камеры / маска подсети:</td>
                             <!--required pattern='#^[0-9]+$#'-->
                 <td><input style="width:100px" class="" form="settinsForm" id="ip_address" name="ip" type="text" value= "{{ ipStatus.ip }}"
                                     pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
               </tr>
-              <tr>
+              <!-- <tr>
                 <td style="width:500px">Маска подсети:</td>
                 <td><input style="width:100px" class="" form="settinsForm" id="ip_netmask" type="text" name="mask" value= "{{ ipStatus.mask }}"
                                     pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
-              </tr>
+              </tr> -->
               <tr>
                 <td style="width:500px">IP адрес шлюза:</td>
                 <td><input style="width:100px" class="" form="settinsForm" id="ip_address_gateway" type="text" name="gateway" value= "{{ ipStatus.gateway }}"
@@ -119,17 +118,24 @@
           <table class="table" style="text-align: left; font:14px Arial, Helvetica, sans-serif;" border="0" cellpadding="1" cellspacing="1">
             <tbody>
               <tr>
-                <td style="width:500px">Порог срабатывания детектора фона, по умолчанию 20</td>
+                <td style="width:500px">Длина калибровочной зоны, м</td>
                             <!--required pattern='#^[0-9]+$#'-->
+                <td><input style="width:100px" class="" type="text" id="calib_zone_length" 
+                                value= "{{ settings.calib_zone_length }}"></td>
               </tr>
               <tr>
-                <td style="width:500px">Гистерезис срабатывания детектора фона, по умолчанию 10</td>
+                <td style="width:500px">Ширина калибровочной зоны, м</td>
+                <td><input style="width:100px" class="" type="text" id="calib_zone_width" 
+                  value= "{{ settings.calib_zone_width }}"></td>
               </tr>
-              <tr>
+              <!-- <tr>
                 <td style="width:500px">Порог срабатывания детектора движения, по умолчанию 30</td>
               </tr>
               <tr>
                 <td style="width:500px">Гистерезис срабатывания детектора движения, по умолчанию 25</td>
+              </tr> -->
+              <tr>
+                <td></td><td></td>
               </tr>
             </tbody>
           </table>
