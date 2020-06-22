@@ -3,6 +3,7 @@
 import cProfile
 import sys, os, time, cv2, socket
 from flask import Flask, session, render_template, Response, request, json, jsonify, make_response
+from flask_httpauth import HTTPBasicAuth
 # from flask_session import Session
 # from multiprocessing import Process, Queue, cpu_count #это фризит процесс.
 # from multiprocessing import Process, Queue
@@ -36,7 +37,9 @@ ipStatus = {"ip": '192.168.0.100/24',
             }
 det_status = [0] # массив для сохранения статуса детектора (пока 1 значение) [GREEN_TAG] из вычислительного потока
 polygones = {} # рамки со всеми потрохами
+
 app = Flask(__name__)
+auth = HTTPBasicAuth() # for authentication
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -209,16 +212,39 @@ def getSettingsFromServer():
     return json.dumps(settings)
 
 
-@app.route('/getStatus60')
+@auth.get_password
+def get_password(username):
+    if username == 'smarttraffic':
+        return '9TYsDh2f3_'
+    return None
+
+
+@auth.error_handler
+def unauthorized():
+    return make_response(jsonify({'error': 'Unauthorized access'}), 401)
+
+
+@app.route('/status60', methods=['GET'])
+@auth.login_required
 def getStatus60():
-    ''' response for client reqoest about traffic parameters fo 60 minutes'''
-    pass
+    ''' response for client request about traffic parameters for 60 minutes'''
+    return jsonify({'tasks': '23'})
 
 
-@app.route('/getStatus15')
+@app.route('/status15', methods=['GET'])
+@auth.login_required
 def getStatus15():
-    ''' response for client reqoest about traffic parameters fo 15 minutes'''
-    pass
+    ''' response for client request about traffic parameters for 15 minutes'''
+    ans = { 
+  				"avg_speed": [ 55, 60, 40, 100 ],
+  				"vehicle_types_intensity": [{"bus": 10, "truck": 20, "car": 50},
+                                            {"bus": 1, "truck": 2, "car": 70},
+                                            {"bus": 0, "truck": 1, "car": 90},
+                                            {"bus": 0, "truck": 0, "car": 950}],
+  				"intensity": [200, 300, 350, 400], 
+  				"avg_time_in_zone": [3, 1, 1, 1]
+			}
+    return jsonify(ans)
 
 
 @app.route('/sendCalibrationToServer', methods=['POST'])
@@ -295,7 +321,7 @@ def set_Default_IP_Settings(def_ip="192.168.0.34/24", def_gateway="192.168.0.254
 
 
 def gpio_button_handler(channel):
-    """ воостанавливает дефолтные настройки IP при замыкании пина 5 на землю"""
+    """ восcтанавливает дефолтные настройки IP при замыкании пина 5 на землю"""
     # print ("сработка set_Default_IP_Settings!!!")
     ts = time.time()
     while 0:#GPIO.input(7) == False:  # при замыкании кнопки

@@ -2,8 +2,6 @@
     Build tracks based on dlib tracker which updated by detector using iou algorythm.
     Kalman filtering implemented???
 """
-# import jetson.inference
-# import jetson.utils
 from threading import Timer, Thread, Lock
 from multiprocessing.dummy import Process, Queue
 # from multiprocessing import Process, Queue
@@ -25,7 +23,11 @@ from shapely.geometry import Point, Polygon, box
 from detect_zones import Ramka
 from transform import four_point_transform, order_points2, windowToFieldCoordinates
 # import requests
-# import Jetson.GPIO as GPIO
+
+if 'linux' in sys.platform:
+    import jetson.inference
+    import jetson.utils    
+    # import Jetson.GPIO as GPIO
 
 # cascade_path = 'vehicles_cascadeLBP_w25_h25_p2572_n58652_neg_roof.xml'
 # cascade_path = 'vehicle_cascadeLBP_w20_h20_p2139.xml'
@@ -59,7 +61,7 @@ proc_height = 480       # y size
 # camera = jetson.utils.gstCamera(width, height, camera_src) # also possible capturing way
 overlay = "box,labels,conf"
 print("[INFO] loading model...")
-# # net = jetson.inference.detectNet(network, sys.argv, threshold)
+# # 
 
 cur_resolution = (width, height)
 scale_factor = cur_resolution[0]/400
@@ -74,6 +76,7 @@ if 'win' in sys.platform:
     winMode = True
 else:
     proj_path = '/home/a/dt3_jetson/'  # путь до папки проекта
+    net = jetson.inference.detectNet(network, sys.argv, threshold)
 
 # video_src = "/home/a/Videos/U524806_3.avi"
 if 'win' in sys.platform:
@@ -89,7 +92,7 @@ else:
 
 # True - camera, False - video file /80ms per frame on camera, 149 on video
 USE_CAMERA = False
-USE_GAMMA = False  # True - for night video
+USE_GAMMA = False  # Gamma correction - True - for night video
 
 # bboxes = []  # bbox's of each frame # candidate for removing
 max_track_lifetime = 2  # if it older than num secs it removes
@@ -150,12 +153,12 @@ def send_det_status_to_hub(addrString, det_status):
     # передача состояний рамок на концентратор методом POST
     # addrString = 'http://' + hubAddress + '/detect'
     # must be a list to get an argument as a reference
-    # print('                              hub ', addrString, det_status)
+    print('                              hub ', addrString, det_status)
 
     try:
-        pass
-        # requests.get(addrString[0], timeout=(0.1, 0.1))
-        # ans = requests.post(addrString, json={"cars_detect": det_status})
+        # pass
+        requests.get(addrString[0], timeout=(0.1, 0.1))
+        ans = requests.post(addrString, json={"cars_detect": det_status})
         # return ans.text
     except:
         pass
@@ -387,7 +390,8 @@ def proc():
                     break
                 # or, if bbox didn't assingned to any track, create a new track
                 tracks.append(Track(frame, bbox, new_tr_number,
-                                    detection.ClassID, detection.Confidence))
+                                    detection.ClassID, detection.Confidence, warp_dimentions_px, 
+                                    calib_area_dimentions_m, M,))
                 new_tr_number += 1
                 if new_tr_number > 99:
                     new_tr_number = 0
@@ -414,7 +418,8 @@ def proc():
         # if web_is_on(): # если web работает копируем исходный фрейм для него
         # print('web', q_pict.qsize())
 
-        # remove frozen tracks and tracks with length less then 3 points.
+        # remove frozen tracks and tracks with length less then 3 points and didn't updated 
+        # for more then 3 secs or if detector cant find the car for more then 40 secs.
         for track in tracks[:]:
             now = time.time()
             # if max track life time is over, or track isn't appended for more than 1 sec, del it
@@ -497,7 +502,7 @@ def proc():
         for i, ramka in enumerate(ramki_scaled):
             ramka.color = 0  # for each ramka before iterate for frames, reset it
             ramki_status[i] = 0
-            # if some track below cross, it,  it woll be on for whole frame.
+            # if some track below cross it, it will be in "on" state for whole frame.
             for track in tracks:
                 if not track.complete:
                     shapely_box = box(
@@ -512,6 +517,11 @@ def proc():
                             if Point(point).within(ramka.shapely_path):
                                 ramka.color = 1
                                 ramki_status[i] = 1
+
+        ### Check if trackpoint cross the top and bottom border of the polygone to measure the speed ###
+        ### Тут надо наверное считать скорость трека. всего трека, а не рамки
+        # ибо понять, трек въехал в зону через верхний край, или через бок не представляется возможным
+        # так что трансформируем каждую точку трека и считаем скорость в треке. 
 
         # then draw polygones with arrows
         for i, ramka in enumerate(ramki_scaled):
@@ -621,9 +631,9 @@ def proc():
                         f'{width}x{height} fps{fps} {network}'
             cv2.putText(frame_show, frame_str, (15, 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
-            # cv2.imshow("Frame", wframe)
-            cv2.imshow("Frame", frame_show)
+            # cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
+            # old one cv2.imshow("Frame", wframe) # the old one
+            # cv2.imshow("Frame", frame_show)
 
             if WITH_TOP_VIEW_IMG:
                 # warped image show
@@ -644,7 +654,7 @@ def proc():
             if key == ord("d"):
                 tracks = []  # kill all tracks pressing d
         if frm_number % 10 == 0:
-            # print(f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks)}')
+            print(f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks)}')
             pass
 
         # if memmon:

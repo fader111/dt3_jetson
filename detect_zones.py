@@ -58,15 +58,6 @@ class Ramka:
         self.down_limit_y_m = self.down_side_center_warped[1] / \
             self.warped_height_px * self.calib_area_length_m
 
-        # посчитаем координаты кружочка в топвью плоскости и отобразим на варпед картинке
-        '''top_point_np3D = np.array([((top_point[0], top_point[1]), (
-            top_point[0], top_point[1]), (top_point[0], top_point[1]))], dtype=np.float32)
-        down_point_np3D = np.array([((down_point[0], down_point[1]), (
-            down_point[0], down_point[1]), (down_point[0], down_point[1]))], dtype=np.float32)
-        trans_point_top = cv2.perspectiveTransform(top_point_np3D, M)[0][0]
-        trans_point_down = cv2.perspectiveTransform(down_point_np3D, M)[0][0]
-        '''
-
     def center_calc(self, path):
         ''' calc center of path to put zone number there
         '''
@@ -99,7 +90,7 @@ class Ramka:
         self.down_side_center = (p3[0]+p4[0])//2, (p3[1]+p4[1])//2
 
     def arrows_path_calc(self, path, h):
-        ''' gives 1 argument - polygon path as [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+        ''' gets argument - polygon path as [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
             returns arrows as  [[[x,y],[x,y],[x,y]],  [..],[..],[..]]]'''
         arrowsPath_ = [[[0, 0], [0, 0], [0, 0]], [[0, 0], [0, 0], [0, 0]], [
             [0, 0], [0, 0], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
@@ -116,8 +107,8 @@ class Ramka:
                 x2 = arrowsPath_[i][1][0] = path[0][0]
                 y2 = arrowsPath_[i][1][1] = path[0][1]
             # // найдем стороны прямоугольного треугольника - половинки основания стрелки
-            a = math.sqrt((x2-x1)*(x2-x1)+(y1-y2)*(y1-y2)) / \
-                2    # //первый катет
+            # //первый катет
+            a = math.sqrt((x2-x1)*(x2-x1)+(y1-y2)*(y1-y2)) / 2    
             # //второй катет просто задается как половина первого
             b = a / 2
             if (b > h / 20):
