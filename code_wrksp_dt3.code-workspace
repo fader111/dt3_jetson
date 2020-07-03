@@ -1,0 +1,26 @@
+{
+	"folders": [
+		{
+			"name": "dt3_jetson",
+			"path": "."
+		},
+		{
+			"name": "dlib_examples",
+			"path": "../dlib_examples"
+		},
+		{
+			"name": "flask_check",
+			"path": "../flask_check"
+		},
+		{
+			"name": "sandbox",
+			"path": "../sandbox"
+		},
+		{
+			"name": "dp2",
+			"path": "../dp2"
+		}
+	],
+	"settings": {},
+	"git.defaultCloneDirectory": ""
+}

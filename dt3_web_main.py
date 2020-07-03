@@ -10,7 +10,7 @@ from flask_httpauth import HTTPBasicAuth
 from multiprocessing.dummy import Process, Queue
 from threading import Timer
 #from camera_pi import Camera
-from RepeatedTimer_ import RepeatedTimer
+# from RepeatedTimer_ import RepeatedTimer
 from main_proc_dlib import *
 from conf_editor import *
 from get_net_settings import *
@@ -108,14 +108,14 @@ def sendSettingsToServer():
     # put polygones and settings to the queue for update them on main_proc_dlib
     # need to put both, because poly depends on calibration, which are in the settings
 
-    updateSettings(json.dumps({ 'hub'               : hub, 
+    updateSettings(json.dumps({ 'hub'               : hub,
                                 'calibration'       : calibPoly,
                                 'calib_zone_length' : calib_zone_length,
                                 'calib_zone_width'  : calib_zone_width
                                 }))
     time.sleep(1) # needs to be sure that settings are inplemented before polygones
     # because settings queue is a bit slower then polygones queue ( ?? need one queue for both polygones and settings??)
-    # otherwise old calibration zode dimentions are in polygones.
+    # otherwise old calibration zone dimentions are in polygones.
     
     #updatePoly(json.dumps(polygones)) #похоже этого недостаточно. 
     # тут оказываются старые полигоны, буду читать новые полигоны из файла, потом их обновлять.
@@ -241,7 +241,7 @@ def getStatus15():
                                             {"bus": 1, "truck": 2, "car": 70},
                                             {"bus": 0, "truck": 1, "car": 90},
                                             {"bus": 0, "truck": 0, "car": 950}],
-  				"intensity": [200, 300, 350, 400], 
+  				"intensity": [200, 300, 350, 400],
   				"avg_time_in_zone": [3, 1, 1, 1]
 			}
     return jsonify(ans)
@@ -352,6 +352,7 @@ print ('ipStatus-', ipStatus)
 # шлем статус сработки детектора на контроллер , концентратор. раз в 400 мс.
 # rtUpdStatusForHub = RepeatedTimer(0.4, sendDetStatusToHub)  # обновляем статус для Hub'a раз в 400 мс
 # rtUpdStatusForHub.start()
+# !! устарело - это переехало в вычислительный процесс
 # в параллельном процессе запускаем все вычисления
 
 settings = read_setts_from_syst(path + "settings.dat")

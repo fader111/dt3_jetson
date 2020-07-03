@@ -22,8 +22,8 @@ class Track:
         self.class_id = ClassID
         self.confidence = confidence
         self.max_point_number = max_point_number
-        self.aver_speed = 0
         self.complete = False   # True means - car went out, don't append it more
+        self.status_obt = False # Status of Track obtained by the detection zone class
 
         # warp section
         self.warped_width_px, self.warped_height_px = warp_dimentions_px
@@ -139,8 +139,8 @@ class Track:
         # нужен еще предыдущий. добавляем его. обновлять его тоже надо.
         # скорость ищем только по координате y
         if len(self.warp_points) > 1:
-            speed = (self.warp_points[-1][1] -
-                     self.warp_points[-2][1])/(self.ts-self.prev_ts)
+            speed = int(3.6*(self.warp_points[-1][1] -
+                     self.warp_points[-2][1])/(self.ts-self.prev_ts))
             if self.aver_speed == 0:  # первое измерение
                 self.aver_speed = speed
             else:
@@ -163,7 +163,7 @@ class Track:
             # show the y coord Top View in meter under the box
             # text = f'{(self.warp_points[-1][0]):.1f} ' f'{(self.warp_points[-1][1]):.1f}m'
             #text = f'{(self.warp_points[-1][1]):.1f}m'
-            speed_km_h = self.aver_speed*3.6
+            speed_km_h = self.aver_speed
             text = f'{speed_km_h:.1f}km/h'
             cv2.putText(frm, text, (self.points[-1][0], self.points[-1][1]+15),
                         cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255), 1)

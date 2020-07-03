@@ -67,6 +67,21 @@ cur_resolution = (width, height)
 scale_factor = cur_resolution[0]/400
 resolution_str = str(cur_resolution[0]) + 'x' + str(cur_resolution[1])
 
+# calculates traffic parameters in 15 minutes period per each detection zone'''
+# uses sliding window for calc
+status15 =  {
+    "avg_speed": [],
+    "vehicle_types_intensity": [{"bus": 0, "truck": 0, "car": 0, 'motorbike':0}],
+    "intensity": [],
+    "avg_time_in_zone": []
+}
+# calculates traffic parameters in 60 minutes period per each detection zone'''
+status60 = {
+    "avg_speed": [],
+    "vehicle_types_intensity": [{"bus": 0, "truck": 0, "car": 0, 'motorbike':0}],
+    "intensity": [],
+    "avg_time_in_zone": []
+}
 
 visual = True  # visual mode
 winMode = False  # debug mode for windows - means that we are in windows now
@@ -174,6 +189,18 @@ def put_queue(queue, data):
         queue.put(data)
 
 
+def put_status(status):
+    ''' Updates detectors status in flask process, when changes occurs 
+        put changes to queue '''
+    # сюда суем статус детектирования, если он изменился в выч процессе. 
+    # в web процессе вычитываем очередь при поступлении запроса
+    print('status', status)
+    while not q_status.empty():
+        q_status.get()
+    if not q_status.qsize() >= q_status.maxsize:
+        q_status.put(status)
+
+
 def proc():
     # timer to restart detector when main thread crashes
     # wdt_tmr = Timer(30, wdt_func) # отключено на время отладки
@@ -265,7 +292,8 @@ def proc():
 
     rtUpdStatusForHub = RepeatedTimer(
         0.4, send_det_status_to_hub, addrString, ramki_status_)
-    rtUpdStatusForHub.start()
+    # rtUpdStatusForHub.start()
+
 
     while True:
         # if memmon:
@@ -453,6 +481,8 @@ def proc():
             calib_area_width_m = float(settings['calib_zone_width'])
             calib_area_dimentions_m = calib_area_width_m, calib_area_length_m
             # calculate polygones coordinates in scale
+            for r in ramki_scaled:
+                r.stop_()
             ramki_scaled = []
             y_size, x_size = wframe.shape[:2]
             if ("polygones") in polygones:
@@ -510,18 +540,23 @@ def proc():
                     interscec_ = ramka.shapely_path.intersection(
                         shapely_box).area/ramka.area*100
                     if (interscec_ > iou_tresh_perc):
-                        # here need to check if track points are in detecting zone, and only then swith it on
+                        # here need to check if track points are in detecting zone, and only then 
+                        # switch it on
                         # iterate for points in track, check if point inside the zone
                         for j in range(len(track.points)):
                             point = track.points[len(track.points)-1-j]
                             if Point(point).within(ramka.shapely_path):
                                 ramka.color = 1
                                 ramki_status[i] = 1
+                                # put average speed of track to the zone 
+                                # if flag obtaining status is False, and it's not the first track point
+                                # then obtain status
+                                if not track.status_obt and (len(track.points)>3):
+                                    ramka.status['avg_speed_1'].append(round(track.aver_speed))
+                                    track.status_obt = True
 
         ### Check if trackpoint cross the top and bottom border of the polygone to measure the speed ###
-        ### Тут надо наверное считать скорость трека. всего трека, а не рамки
-        # ибо понять, трек въехал в зону через верхний край, или через бок не представляется возможным
-        # так что трансформируем каждую точку трека и считаем скорость в треке. 
+        
 
         # then draw polygones with arrows
         for i, ramka in enumerate(ramki_scaled):

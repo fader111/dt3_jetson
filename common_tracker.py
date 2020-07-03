@@ -1,6 +1,8 @@
 ''' tools for tracker '''
 import numpy as np
 import math
+import time
+import threading
 
 blue = (255, 0, 0)  # BGR format
 green = (0, 255, 0)
@@ -37,3 +39,28 @@ def bbox_touch_the_border(bbox, height, width, bord_lim=10):
         return True
     else:
         return False
+
+
+def setInterval(interval):
+    def decorator(function):
+        def wrapper(*args, **kwargs):
+            stopped = threading.Event()
+
+            def loop(): # executed in another thread
+                while not stopped.wait(interval): # until stopped
+                    function(*args, **kwargs)
+
+            t = threading.Thread(target=loop)
+            t.daemon = True # stop if the program exits
+            t.start()
+            return stopped
+        return wrapper
+    return decorator
+
+# Usage:
+# @setInterval(.5)
+# def function(s):
+#    print(s)
+
+#stop = function("BlaBla") # start timer, the first call is in .5 seconds
+# time.sleep(20.1)
