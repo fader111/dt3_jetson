@@ -18,10 +18,12 @@ from get_net_settings import *
 from iou import bb_intersection_over_union
 # from track_iou_kalman_cv2 import Track
 from track_dlib import Track
-from dlib import correlation_tracker
+# from dlib import correlation_tracker
 from shapely.geometry import Point, Polygon, box
 from detect_zones import Ramka
 from transform import four_point_transform, order_points2, windowToFieldCoordinates
+from common_tracker import setInterval
+from pprint import pprint
 # import requests
 
 if 'linux' in sys.platform:
@@ -36,7 +38,8 @@ q_pict = Queue(maxsize=5)       # queue for web picts
 # queue for ip and other settings to sent from web client to python
 q_settings = Queue(maxsize=5)
 q_ramki = Queue(maxsize=5)      # polygones paths
-q_status = Queue(maxsize=5)     # current status of process for web.
+q_status60 = Queue(maxsize=5)     # current status60 of process for web.
+q_status15 = Queue(maxsize=5)     # current status15 of process for web.
 
 # jetson inference networks list
 network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
@@ -67,7 +70,7 @@ cur_resolution = (width, height)
 scale_factor = cur_resolution[0]/400
 resolution_str = str(cur_resolution[0]) + 'x' + str(cur_resolution[1])
 
-# calculates traffic parameters in 15 minutes period per each detection zone'''
+# calculates traffic parameters in 15 minutes period per each detection zone
 # uses sliding window for calc
 status15 =  {
     "avg_speed": [],
@@ -75,7 +78,7 @@ status15 =  {
     "intensity": [],
     "avg_time_in_zone": []
 }
-# calculates traffic parameters in 60 minutes period per each detection zone'''
+# calculates traffic parameters in 60 minutes period per each detection zone
 status60 = {
     "avg_speed": [],
     "vehicle_types_intensity": [{"bus": 0, "truck": 0, "car": 0, 'motorbike':0}],
@@ -189,16 +192,32 @@ def put_queue(queue, data):
         queue.put(data)
 
 
-def put_status(status):
+def put_status(queue, status):
     ''' Updates detectors status in flask process, when changes occurs 
         put changes to queue '''
     # сюда суем статус детектирования, если он изменился в выч процессе. 
     # в web процессе вычитываем очередь при поступлении запроса
-    print('status', status)
-    while not q_status.empty():
-        q_status.get()
-    if not q_status.qsize() >= q_status.maxsize:
-        q_status.put(status)
+    # print('status', status)
+    while not queue.empty():
+        queue.get()
+    if not queue.qsize() >= queue.maxsize:
+        queue.put(status)
+
+
+def init_status60_15_struct(n_ramki):
+    ''' initiates status60, status15, massives according to the number of 
+        detecting zones
+    '''
+    status60["avg_speed"] = [0 for j in range(n_ramki)]
+    status60["vehicle_types_intensity"] = [{"bus": 0, "truck": 0, "car": 0, 'motorbike':0} for j in range(n_ramki)]
+    status60["intensity"] = [0 for j in range(n_ramki)]
+    status60["avg_time_in_zone"] = [0 for j in range(n_ramki)]
+
+    status15["avg_speed"] = [0 for j in range(n_ramki)]
+    status15["vehicle_types_intensity"] = [{"bus": 0, "truck": 0, "car": 0, 'motorbike':0} for j in range(n_ramki)]
+    status15["intensity"] = [0 for j in range(n_ramki)]
+    status15["avg_time_in_zone"] = [0 for j in range(n_ramki)]
+    # print()
 
 
 def proc():
@@ -294,6 +313,28 @@ def proc():
         0.4, send_det_status_to_hub, addrString, ramki_status_)
     # rtUpdStatusForHub.start()
 
+    init_status60_15_struct(len(ramki_scaled)) # function wich inits status60 and status15 massives
+    # with proper number of detecting zones
+
+    @setInterval(20) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
+    def function():
+        ''' calculates detector status60 and status15 '''
+        for i, ramka in enumerate(ramki_scaled):
+            ramka.sliding_wind()
+            status60['avg_speed'][i] = ramka.status['avg_speed_60']
+            status15['avg_speed'][i] = ramka.status['avg_speed_15']
+        # print('status60')
+        # pprint(status60)
+
+        # print('status15')
+        # pprint(status15)
+
+        ### Transmit status60 and status15 to the q_status queue ###
+        put_status(q_status60, status60)
+        put_status(q_status15, status15)
+
+    # start new thread for average speed calculating
+    stop = function() # stop is threading.Event object
 
     while True:
         # if memmon:
@@ -349,7 +390,10 @@ def proc():
         # needs for cuda to add new one channel
         img_c = cv2.cvtColor(img_c, cv2.COLOR_BGR2RGBA)  # ogiginal variant
 
-        # Detection phase - each 2nd (5th?) frame will detect using Jetson inference
+        
+        ### DETECTION PHASE ###
+        
+        #  each 2nd (5th?) frame will detect using Jetson inference
         if frm_number % detect_phase_period == 0:  # 5 - default
             # tss = time.time() # 56 w/o/ stdout on video
             '''!!!'''
@@ -424,7 +468,10 @@ def proc():
                 if new_tr_number > 99:
                     new_tr_number = 0
 
-        # trackig phase - update tracks
+
+        ### TRACKING PHASE ###
+
+        # update tracks
         else:
             for track in tracks:
                 # update the tracker and grab the updated position
@@ -447,13 +494,13 @@ def proc():
         # print('web', q_pict.qsize())
 
         # remove frozen tracks and tracks with length less then 3 points and didn't updated 
-        # for more then 3 secs or if detector cant find the car for more then 40 secs.
+        # for more then 3 secs or if detector cant find the car for more then 10 secs.
         for track in tracks[:]:
             now = time.time()
             # if max track life time is over, or track isn't appended for more than 1 sec, del it
             if (now - track.ts > max_track_lifetime) | \
                 ((now - track.ts > 3) & (len(track.boxes) < 3)) | \
-                    (now - track.renew_ts > 40):
+                    (now - track.renew_ts > 10):
                 if key_time != 0:  # when video capturing stops tracks don't delete
                     tracks.remove(track)
 
@@ -470,6 +517,9 @@ def proc():
         else:
             fps = ' ***'
 
+
+        ### UPDATE DETECTION ZONES STATUS AND SETTINGS SECTION ###
+
         # get polygones from flask process
         # when polygones change on web, it always translate to calc process
         # using Queue
@@ -480,9 +530,11 @@ def proc():
             calib_area_length_m = float(settings['calib_zone_length'])
             calib_area_width_m = float(settings['calib_zone_width'])
             calib_area_dimentions_m = calib_area_width_m, calib_area_length_m
+
+            # stops setInterval detecting zones sliding windows
+            stop.set()
+
             # calculate polygones coordinates in scale
-            for r in ramki_scaled:
-                r.stop_()
             ramki_scaled = []
             y_size, x_size = wframe.shape[:2]
             if ("polygones") in polygones:
@@ -510,6 +562,10 @@ def proc():
                 ramki_status_.pop()
             while len(ramki_status_) < len(ramki_status):
                 ramki_status_.append(0)
+            # update status60 and status15 structures according to the number of det zones
+            init_status60_15_struct(len(ramki_scaled)) 
+            # start setInterval detecting zones sliding windows
+            stop = function()
 
         # get settings from flask process
         # when setting change on web, it always translate to calc process
@@ -551,14 +607,15 @@ def proc():
                                 # put average speed of track to the zone 
                                 # if flag obtaining status is False, and it's not the first track point
                                 # then obtain status
-                                if not track.status_obt and (len(track.points)>3):
+                                if not track.status_obt and (len(track.points) > 3):
                                     ramka.status['avg_speed_1'].append(round(track.aver_speed))
+                                    # so, track status already obtained, do not do it twice
                                     track.status_obt = True
-
-        ### Check if trackpoint cross the top and bottom border of the polygone to measure the speed ###
+                                # below is dummy, cause it's always False
+                                # print(f'                          {i} ramka.stop.isSet={ramka.stop.isSet()}')
         
 
-        # then draw polygones with arrows
+        # Draw polygones with arrows
         for i, ramka in enumerate(ramki_scaled):
             color_ = green if ramka.color == 1 else blue
             cv2.putText(frame_show, str(i+1), (ramka.center[0]-5, ramka.center[1]+5),
@@ -579,7 +636,8 @@ def proc():
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, white, 1)
 
         # do the transform calibration polygone to get top View
-        # if top view image needed, WITH_TOP_VIEW_IMG = True
+        # if top view image needed to be shown in GUI, 
+        # use WITH_TOP_VIEW_IMG = True
         WITH_TOP_VIEW_IMG = False
 
         # show the warped calibration polygone area

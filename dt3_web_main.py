@@ -35,8 +35,23 @@ ipStatus = {"ip": '192.168.0.100/24',
             "gateway": '192.168.0.1',
             "hub": '192.168.0.39'
             }
+            
 det_status = [0] # массив для сохранения статуса детектора (пока 1 значение) [GREEN_TAG] из вычислительного потока
 polygones = {} # рамки со всеми потрохами
+
+# defafult mass for detector status in 15 min interval
+status15 = {  	"avg_speed": [],
+  				"vehicle_types_intensity": [],
+  				"intensity": [], 
+  				"avg_time_in_zone": []
+            }
+
+# defafult mass for detector status in 60 min interval
+status60 = {  	"avg_speed": [],
+  				"vehicle_types_intensity": [],
+  				"intensity": [], 
+  				"avg_time_in_zone": []
+            }
 
 app = Flask(__name__)
 auth = HTTPBasicAuth() # for authentication
@@ -224,17 +239,28 @@ def unauthorized():
     return make_response(jsonify({'error': 'Unauthorized access'}), 401)
 
 
+def q_status_get(queue, status):
+    ''' gets the status from q_status queue '''
+    if not queue.empty():
+        ans = queue.get()
+        status = ans
+    return status
+        
+
 @app.route('/status60', methods=['GET'])
 @auth.login_required
 def getStatus60():
-    ''' response for client request about traffic parameters for 60 minutes'''
-    return jsonify({'tasks': '23'})
+    ''' response for client request about traffic parameters in period of 60 minutes'''
+    global status60
+    status60 = q_status_get(q_status60, status60)
+    return jsonify(status60)
 
 
 @app.route('/status15', methods=['GET'])
 @auth.login_required
 def getStatus15():
-    ''' response for client request about traffic parameters for 15 minutes'''
+    ''' response for client request about traffic parameters in period of 15 minutes'''
+    ''' an example below
     ans = { 
   				"avg_speed": [ 55, 60, 40, 100 ],
   				"vehicle_types_intensity": [{"bus": 10, "truck": 20, "car": 50},
@@ -244,7 +270,10 @@ def getStatus15():
   				"intensity": [200, 300, 350, 400],
   				"avg_time_in_zone": [3, 1, 1, 1]
 			}
-    return jsonify(ans)
+    '''
+    global status15
+    status15 = q_status_get(q_status15, status15)
+    return jsonify(status15)
 
 
 @app.route('/sendCalibrationToServer', methods=['POST'])
@@ -346,7 +375,6 @@ ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
             "hub": get_hub(path+"settings.dat")
             }
 print ('ipStatus-', ipStatus)
-
 
 
 # шлем статус сработки детектора на контроллер , концентратор. раз в 400 мс.

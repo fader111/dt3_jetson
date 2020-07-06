@@ -57,10 +57,12 @@ def setInterval(interval):
         return wrapper
     return decorator
 
+'''
 # Usage:
-# @setInterval(.5)
-# def function(s):
-#    print(s)
+@setInterval(5)
+def fnct(s):
+   print(s)
 
-#stop = function("BlaBla") # start timer, the first call is in .5 seconds
-# time.sleep(20.1)
+stop = fnct("BlaBla") # start timer, the first call is in .5 seconds
+time.sleep(15.1)
+'''
