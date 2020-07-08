@@ -313,7 +313,7 @@ def proc():
         0.4, send_det_status_to_hub, addrString, ramki_status_)
     # rtUpdStatusForHub.start()
 
-    init_status60_15_struct(len(ramki_scaled)) # function wich inits status60 and status15 massives
+    init_status60_15_struct(len(ramki_scaled)) # initiates status60 and status15 massives
     # with proper number of detecting zones
 
     @setInterval(20) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
@@ -323,6 +323,8 @@ def proc():
             ramka.sliding_wind()
             status60['avg_speed'][i] = ramka.status['avg_speed_60']
             status15['avg_speed'][i] = ramka.status['avg_speed_15']
+            status60['intensity'][i] = ramka.status['avg_intens_60']
+            status15['intensity'][i] = ramka.status['avg_intens_15']
         # print('status60')
         # pprint(status60)
 

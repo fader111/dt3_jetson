@@ -305,7 +305,7 @@ def updateSettings(settings):
 
 
 def applyIPsettingsLinux(gate):
-    """apply all the network settings, restart dcpcd service after changes on web page"""
+    """apply all the network settings, dcpcd service after changes on web page"""
     if not winMode:
         _comm = os.popen("sudo ip addr flush dev eth0 && sudo systemctl restart dhcpcd.service")
         _comm.read()

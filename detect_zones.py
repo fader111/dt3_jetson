@@ -36,12 +36,14 @@ class Ramka:
 
         # status dictionary for avg speed intensity and others
         self.status = {
+            'avg_speed_1': [],   # last one minute avg speed, appends by each track.
+
             'avg_speed_15': 0,   # average speed measured by sliding window 15 min interval
-            # last one minute avg speed, appends by each track.
-            'avg_speed_1': [],
             'avg_speed_60': 0,   # same for 60 min interval
-            'speeds_60': [],     # average speed samples during 1 hour
-            '': 0                # others will be here
+            'speeds_60': [],     # average speed samples during 1 hour ( 60 items)
+            'avg_intens_15': 0,  # intensity for 15 min interval (15 items )
+            'avg_intens_60': 0,  # intensity for 15 min interval (15 items )
+            'intenses_60': []      # intensity for 60 min interval (60 items )
         }
         # self.stopped = None # look at setInterval
         self.shapely_path = Polygon(path)
@@ -166,8 +168,9 @@ class Ramka:
     def sliding_wind(self):
         ''' sliding window for calculating detector ctatus starts each 1 minute'''
         # добавляем в минутный список сред скорость каждого трека
-        print("                                                   self.status['avg_speed_1']", self.status['avg_speed_1'])
+        # print("                                                   self.status['avg_speed_1']", self.status['avg_speed_1'])
         # вычисляем среднюю скорость за последнюю минуту
+        ### Average speed calculating section ###
         if len(self.status['avg_speed_1']) != 0:
             minute_avg_speed = sum(
                 self.status['avg_speed_1'])/len(self.status['avg_speed_1'])
@@ -176,8 +179,6 @@ class Ramka:
         else:
             minute_avg_speed = 0
         
-        # обнуляем массив скоростей за минуту
-        self.status['avg_speed_1'] = []
         # удаляем первое значение из часового массива скоростей, если там больше 60-ти значений
         if len(self.status['speeds_60']) > 60:
             self.status['speeds_60'].pop(0)
@@ -197,16 +198,39 @@ class Ramka:
             self.status['avg_speed_15'] = int(sum(
                 self.status['speeds_60'][-15:])/len(self.status['speeds_60'][-15:]))
 
-        print(
-            "                                                   self.status['avg_speed_15']", self.status['avg_speed_15'])
-    """
-    # moved to the main proc
-    def stop_(self):
-        ''' stops threads started inside the instance before deleting the instance
-            otherwise thread remains '''
-        self.stop.set()
-    """
+        ### Intensity calculating section ###
+        
+        # количество машин в минуту делим на 60 получаем машин в час.
+        # в intense_60 добавляем число машин в час.
+        n_cars_60 = len(self.status['avg_speed_1'])*60
+        # каждую минуту добавляем в status['intenses_60'] это количество
+        self.status['intenses_60'].append(n_cars_60)
+        # если значений там больше 60, удаляем первое
+        if len(self.status['intenses_60']) > 60:
+            self.status['intenses_60'].pop(0)
+        # вычисляем среднюю интенсвность в час 
+        if len(self.status['intenses_60']):
+            self.status['avg_intens_60'] = int(sum(
+                self.status['intenses_60'])/len(self.status['intenses_60']))
+        else:
+            self.status['avg_intens_60'] = 0
 
+        # если в массиве часовых интенсивностей <=15 значений, то средняяя интенсивность за час
+        # равна средней интенсивности за последние 15 минут
+        if len(self.status['intenses_60']) <= 15:
+            self.status['avg_intens_15'] = self.status['avg_intens_60']
+        # если больше 15 значений, то берем срез последних 15-ти из часового массива и по 
+        # нему считаем среднюю интенсивность за последние 15 минут
+        else:
+            self.status['avg_intens_15'] = int(sum(
+                self.status['intenses_60'][-15:])/len(self.status['intenses_60'][-15:]))
+                
+        ### END ###
+        # обнуляем массив скоростей за минуту
+        self.status['avg_speed_1'] = []
+        # print(
+            # "                                                   self.status['avg_speed_15']", self.status['avg_speed_15'])
+           
 '''
 test_path = [[0,0], [5,30], [35,33], [40,10]]
 ramka = Ramka(test_path)
