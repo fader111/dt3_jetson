@@ -316,15 +316,19 @@ def proc():
     init_status60_15_struct(len(ramki_scaled)) # initiates status60 and status15 massives
     # with proper number of detecting zones
 
-    @setInterval(20) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
+    @setInterval(60) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
     def function():
         ''' calculates detector status60 and status15 '''
         for i, ramka in enumerate(ramki_scaled):
             ramka.sliding_wind()
-            status60['avg_speed'][i] = ramka.status['avg_speed_60']
-            status15['avg_speed'][i] = ramka.status['avg_speed_15']
-            status60['intensity'][i] = ramka.status['avg_intens_60']
-            status15['intensity'][i] = ramka.status['avg_intens_15']
+            status60['avg_speed'][i] =          ramka.status['avg_speed_60']
+            status60['intensity'][i] =          ramka.status['avg_intens_60']
+            status60['avg_time_in_zone'][i] =   ramka.status['avg_time_in_zone_60']
+
+            status15['avg_speed'][i] =          ramka.status['avg_speed_15']
+            status15['intensity'][i] =          ramka.status['avg_intens_15']
+            status15['avg_time_in_zone'][i] =  ramka.status['avg_time_in_zone_15']
+
         # print('status60')
         # pprint(status60)
 
@@ -585,6 +589,7 @@ def proc():
             calib_area_dimentions_m = calib_area_width_m, calib_area_length_m
 
         ### Changing zone colors ###
+        
         # If any track point is inside the detecting zone - change it's state to On.
         # use shapely lib to calculate intersections of polygones (good lib)
         for i, ramka in enumerate(ramki_scaled):
@@ -604,8 +609,12 @@ def proc():
                         for j in range(len(track.points)):
                             point = track.points[len(track.points)-1-j]
                             if Point(point).within(ramka.shapely_path):
+                                
+                                ### Change ramka status ###
                                 ramka.color = 1
                                 ramki_status[i] = 1
+                                
+                                ### Append track speed to ramka ###
                                 # put average speed of track to the zone 
                                 # if flag obtaining status is False, and it's not the first track point
                                 # then obtain status
@@ -613,14 +622,25 @@ def proc():
                                     ramka.status['avg_speed_1'].append(round(track.aver_speed))
                                     # so, track status already obtained, do not do it twice
                                     track.status_obt = True
-                                # below is dummy, cause it's always False
-                                # print(f'                          {i} ramka.stop.isSet={ramka.stop.isSet()}')
-        
+                                
+            ### Calculate time in zone ###
+            if (ramka.color == 1) and (ramka.trig == False):
+                ramka.ts = time.time()
+                ramka.trig = True
+            if (ramka.trig == True) and (ramka.color == 0):
+                ramka.status['cur_time_in_zone'] = round((time.time() - ramka.ts), 1)
 
+                ramka.status['times_in_zone_1'].append(ramka.status['cur_time_in_zone'])
+                
+                ramka.trig = False
+            
+                        
         # Draw polygones with arrows
         for i, ramka in enumerate(ramki_scaled):
             color_ = green if ramka.color == 1 else blue
-            cv2.putText(frame_show, str(i+1), (ramka.center[0]-5, ramka.center[1]+5),
+
+            cv2.putText(frame_show, str(i+1)+' '+str(ramka.status['cur_time_in_zone']), (ramka.center[0]-5, ramka.center[1]+5),
+            # cv2.putText(frame_show, str(i+1)+' ', (ramka.center[0]-5, ramka.center[1]+5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_, 2)
             # draw polygones
             cv2.polylines(frame_show, np.array(

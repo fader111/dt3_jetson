@@ -14,8 +14,8 @@ purple = (255, 0, 255)
 
 
 class Ramka:
-    '''has path, color, state, shapely state fields'''
-    state = 0               # state of polygon On/Off
+    '''has path, color, shapely state fields'''
+    # need to delete state = 0               # state of polygon On/Off
     # arrows graphical path of this polygon.[[[x,y],[x,y],[x,y]], [..], [..]]]
     arrows = []
     ramki_directions = []
@@ -38,14 +38,22 @@ class Ramka:
         self.status = {
             'avg_speed_1': [],   # last one minute avg speed, appends by each track.
 
-            'avg_speed_15': 0,   # average speed measured by sliding window 15 min interval
-            'avg_speed_60': 0,   # same for 60 min interval
-            'speeds_60': [],     # average speed samples during 1 hour ( 60 items)
-            'avg_intens_15': 0,  # intensity for 15 min interval (15 items )
-            'avg_intens_60': 0,  # intensity for 15 min interval (15 items )
-            'intenses_60': []      # intensity for 60 min interval (60 items )
+            'avg_speed_15': 0,      # average speed measured by sliding window 15 min interval
+            'avg_speed_60': 0,      # same for 60 min interval
+            'speeds_60': [],        # average speed samples during 1 hour ( 60 items)
+            
+            'avg_intens_15': 0,     # intensity for 15 min interval (15 items )
+            'avg_intens_60': 0,     # intensity for 15 min interval (15 items )
+            'intenses_60': [],      # intensity for 60 min interval (60 items )
+
+            'cur_time_in_zone':0,   # how much time car stays in detection zone, duration in sec             
+            'times_in_zone_1':[],   # cur_time_in_zone values massiv of 1 minute             
+            'times_in_zone_60':[],  # mass with times in 60 min for sliding window
+            'avg_time_in_zone_15':0,# average average time in zone during 15 min ( 15 items)
+            'avg_time_in_zone_60':0 # average average time in zone during 1 hour ( 60 items)
         }
         # self.stopped = None # look at setInterval
+        self.trig = False # trigger for time in ramka measurement
         self.shapely_path = Polygon(path)
         self.center = self.center_calc(path)
         self.arrows_path = self.arrows_path_calc(path, h)
@@ -167,10 +175,13 @@ class Ramka:
 
     def sliding_wind(self):
         ''' sliding window for calculating detector ctatus starts each 1 minute'''
+        
+        
+        ### Average speed calculating section ###
+        
         # добавляем в минутный список сред скорость каждого трека
         # print("                                                   self.status['avg_speed_1']", self.status['avg_speed_1'])
         # вычисляем среднюю скорость за последнюю минуту
-        ### Average speed calculating section ###
         if len(self.status['avg_speed_1']) != 0:
             minute_avg_speed = sum(
                 self.status['avg_speed_1'])/len(self.status['avg_speed_1'])
@@ -182,12 +193,14 @@ class Ramka:
         # удаляем первое значение из часового массива скоростей, если там больше 60-ти значений
         if len(self.status['speeds_60']) > 60:
             self.status['speeds_60'].pop(0)
+
         # вычисляем среднюю скорость за час
         if len(self.status['speeds_60']) != 0:
             self.status['avg_speed_60'] = int(sum(
                 self.status['speeds_60'])/len(self.status['speeds_60']))
         else:
             self.status['avg_speed_60'] = 0
+
         # если в массиве часовых скоростей <=15 значений, то средняяя скорость за час
         # равна средней скорости за последние 15 минут
         if len(self.status['speeds_60']) <= 15:
@@ -198,6 +211,7 @@ class Ramka:
             self.status['avg_speed_15'] = int(sum(
                 self.status['speeds_60'][-15:])/len(self.status['speeds_60'][-15:]))
 
+        
         ### Intensity calculating section ###
         
         # количество машин в минуту делим на 60 получаем машин в час.
@@ -224,8 +238,43 @@ class Ramka:
         else:
             self.status['avg_intens_15'] = int(sum(
                 self.status['intenses_60'][-15:])/len(self.status['intenses_60'][-15:]))
-                
-        ### END ###
+
+        
+        ### Average time in zone calculating section ###
+
+        # вычисляем среднее время нахождения в зоне за последнюю минуту
+        if len(self.status['times_in_zone_1']) != 0:
+            minute_avg_time_in_zone = sum(
+                self.status['times_in_zone_1'])/len(self.status['times_in_zone_1'])
+            # добавляем ее в часовой массив времени, но только если это не 0.
+            self.status['times_in_zone_60'].append(minute_avg_time_in_zone)
+        else:
+            minute_avg_time_in_zone = 0
+
+        # удаляем первое значение из часового массива времен в зоне, 
+        # если там больше 60-ти значений
+        if len(self.status['times_in_zone_60']) > 60:
+            self.status['times_in_zone_60'].pop(0)
+        # вычисляем среднее время в зоне за час
+        if len(self.status['times_in_zone_60']) != 0:
+            self.status['avg_time_in_zone_60'] = round((sum(
+                self.status['times_in_zone_60'])/len(self.status['times_in_zone_60'])), 1)
+        else:
+            self.status['avg_time_in_zone_60'] = 0
+
+        # если в массиве часовых времен в зоне <= 15 значений, то среднее время в зоне за час
+        # равна среднему времени в зоне за последние 15 минут
+        if len(self.status['times_in_zone_60']) <= 15:
+            self.status['avg_time_in_zone_15'] = self.status['avg_time_in_zone_60']
+        # если больше 15 значений, то берем срез последних 15-ти из часового массива и по 
+        # нему считаем среднее время в зоне за последние 15 минут
+        else:
+            self.status['avg_time_in_zone_15'] = round((sum(
+                self.status['times_in_zone_60'][-15:])/len(self.status['times_in_zone_60'][-15:])), 1)
+
+    
+            ### END ###
+    
         # обнуляем массив скоростей за минуту
         self.status['avg_speed_1'] = []
         # print(
