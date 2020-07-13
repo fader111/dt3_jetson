@@ -316,7 +316,7 @@ def proc():
     init_status60_15_struct(len(ramki_scaled)) # initiates status60 and status15 massives
     # with proper number of detecting zones
 
-    @setInterval(60) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
+    @setInterval(15) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
     def function():
         ''' calculates detector status60 and status15 '''
         for i, ramka in enumerate(ramki_scaled):
@@ -327,7 +327,7 @@ def proc():
 
             status15['avg_speed'][i] =          ramka.status['avg_speed_15']
             status15['intensity'][i] =          ramka.status['avg_intens_15']
-            status15['avg_time_in_zone'][i] =  ramka.status['avg_time_in_zone_15']
+            status15['avg_time_in_zone'][i] =   ramka.status['avg_time_in_zone_15']
 
         # print('status60')
         # pprint(status60)

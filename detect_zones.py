@@ -52,8 +52,9 @@ class Ramka:
             'avg_time_in_zone_15':0,# average average time in zone during 15 min ( 15 items)
             'avg_time_in_zone_60':0 # average average time in zone during 1 hour ( 60 items)
         }
+
         # self.stopped = None # look at setInterval
-        self.trig = False # trigger for time in ramka measurement
+        self.trig = False # trigger for time in ramka measurement process
         self.shapely_path = Polygon(path)
         self.center = self.center_calc(path)
         self.arrows_path = self.arrows_path_calc(path, h)
@@ -174,8 +175,8 @@ class Ramka:
         return arrowsPath_
 
     def sliding_wind(self):
-        ''' sliding window for calculating detector ctatus starts each 1 minute'''
-        
+        ''' sliding window for calculating detector ctatus starts each 1 minute 
+            calls from calculating process '''
         
         ### Average speed calculating section ###
         
@@ -271,8 +272,12 @@ class Ramka:
         else:
             self.status['avg_time_in_zone_15'] = round((sum(
                 self.status['times_in_zone_60'][-15:])/len(self.status['times_in_zone_60'][-15:])), 1)
+        
 
-    
+        ### Intense by vehicle type calculating section ###
+
+        
+
             ### END ###
     
         # обнуляем массив скоростей за минуту
