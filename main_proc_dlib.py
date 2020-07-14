@@ -74,14 +74,14 @@ resolution_str = str(cur_resolution[0]) + 'x' + str(cur_resolution[1])
 # uses sliding window for calc
 status15 =  {
     "avg_speed": [],
-    "vehicle_types_intensity": [{"bus": 0, "truck": 0, "car": 0, 'motorbike':0}],
+    "vehicle_types_intensity": [{"13": 0, "2": 0, "1": 0}],
     "intensity": [],
     "avg_time_in_zone": []
 }
 # calculates traffic parameters in 60 minutes period per each detection zone
 status60 = {
     "avg_speed": [],
-    "vehicle_types_intensity": [{"bus": 0, "truck": 0, "car": 0, 'motorbike':0}],
+    "vehicle_types_intensity": [{"13": 0, "2": 0, "1": 0}],
     "intensity": [],
     "avg_time_in_zone": []
 }
@@ -207,14 +207,15 @@ def put_status(queue, status):
 def init_status60_15_struct(n_ramki):
     ''' initiates status60, status15, massives according to the number of 
         detecting zones
+        vehicle types: 1- car; 2 - 2axis truck; 3-3axix track; 13 - bus.
     '''
     status60["avg_speed"] = [0 for j in range(n_ramki)]
-    status60["vehicle_types_intensity"] = [{"bus": 0, "truck": 0, "car": 0, 'motorbike':0} for j in range(n_ramki)]
+    status60["vehicle_types_intensity"] = [{"1": 0, "2": 0, "13": 0} for j in range(n_ramki)]
     status60["intensity"] = [0 for j in range(n_ramki)]
     status60["avg_time_in_zone"] = [0 for j in range(n_ramki)]
 
     status15["avg_speed"] = [0 for j in range(n_ramki)]
-    status15["vehicle_types_intensity"] = [{"bus": 0, "truck": 0, "car": 0, 'motorbike':0} for j in range(n_ramki)]
+    status15["vehicle_types_intensity"] = [{"1": 0, "2": 0, "13": 0} for j in range(n_ramki)]
     status15["intensity"] = [0 for j in range(n_ramki)]
     status15["avg_time_in_zone"] = [0 for j in range(n_ramki)]
     # print()
@@ -321,13 +322,15 @@ def proc():
         ''' calculates detector status60 and status15 '''
         for i, ramka in enumerate(ramki_scaled):
             ramka.sliding_wind()
-            status60['avg_speed'][i] =          ramka.status['avg_speed_60']
-            status60['intensity'][i] =          ramka.status['avg_intens_60']
-            status60['avg_time_in_zone'][i] =   ramka.status['avg_time_in_zone_60']
+            status60['avg_speed'][i] =                  ramka.status['avg_speed_60']
+            status60['intensity'][i] =                  ramka.status['avg_intens_60']
+            status60['avg_time_in_zone'][i] =           ramka.status['avg_time_in_zone_60']
+            status60["vehicle_types_intensity"][i] =    ramka.status['avg_intens_60_tp']
 
-            status15['avg_speed'][i] =          ramka.status['avg_speed_15']
-            status15['intensity'][i] =          ramka.status['avg_intens_15']
-            status15['avg_time_in_zone'][i] =   ramka.status['avg_time_in_zone_15']
+            status15['avg_speed'][i] =                  ramka.status['avg_speed_15']
+            status15['intensity'][i] =                  ramka.status['avg_intens_15']
+            status15['avg_time_in_zone'][i] =           ramka.status['avg_time_in_zone_15']
+            status15["vehicle_types_intensity"][i] =    ramka.status['avg_intens_15_tp']
 
         # print('status60')
         # pprint(status60)
@@ -588,7 +591,7 @@ def proc():
             calib_area_width_m = float(settings['calib_zone_width'])
             calib_area_dimentions_m = calib_area_width_m, calib_area_length_m
 
-        ### Changing zone colors ###
+        ### Changing zone colors and statistics ###
         
         # If any track point is inside the detecting zone - change it's state to On.
         # use shapely lib to calculate intersections of polygones (good lib)
@@ -619,19 +622,34 @@ def proc():
                                 # if flag obtaining status is False, and it's not the first track point
                                 # then obtain status
                                 if not track.status_obt and (len(track.points) > 3):
+
+                                    ### Average spped ###
                                     ramka.status['avg_speed_1'].append(round(track.aver_speed))
+
+                                    
+                                    ### Intense vehicles by types ###
+                                    # CLASSES = {6:"bus"(13), 3:"car"(1), 8:"truck"(2), 4:"motorcicle"}
+                                                               
+                                    
+                                    if track.class_id == 3: # if car
+                                        ramka.status['avg_intens_1_tp']['1'].append(round(track.aver_speed))
+                                    elif track.class_id == 8: # if truck
+                                        ramka.status['avg_intens_1_tp']['2'].append(round(track.aver_speed))
+                                    elif track.class_id == 6: # if bus
+                                        ramka.status['avg_intens_1_tp']['13'].append(round(track.aver_speed))
+
                                     # so, track status already obtained, do not do it twice
                                     track.status_obt = True
-                                
+
+                # if track                     
+
             ### Calculate time in zone ###
             if (ramka.color == 1) and (ramka.trig == False):
                 ramka.ts = time.time()
                 ramka.trig = True
             if (ramka.trig == True) and (ramka.color == 0):
                 ramka.status['cur_time_in_zone'] = round((time.time() - ramka.ts), 1)
-
                 ramka.status['times_in_zone_1'].append(ramka.status['cur_time_in_zone'])
-                
                 ramka.trig = False
             
                         

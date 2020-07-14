@@ -20,6 +20,7 @@ class Ramka:
     arrows = []
     ramki_directions = []
     color = blue
+    types = {"13": 0, "2": 0, "1": 0} # vehicle types
 
     def __init__(self, path, warp_dimentions_px, calib_area_dimentions_m, M, directions=[0, 0, 0, 0], h=600):
         ''' initiate polygones when they changes on server 
@@ -42,9 +43,14 @@ class Ramka:
             'avg_speed_60': 0,      # same for 60 min interval
             'speeds_60': [],        # average speed samples during 1 hour ( 60 items)
             
-            'avg_intens_15': 0,     # intensity for 15 min interval (15 items )
-            'avg_intens_60': 0,     # intensity for 15 min interval (15 items )
-            'intenses_60': [],      # intensity for 60 min interval (60 items )
+            'avg_intens_15': 0,     # average intensity for 15 min interval 
+            'avg_intens_60': 0,     # average intensity for 60 min interval 
+            'intenses_60': [],      # intensity for 60 min sliding window interval (60 items )
+
+            'avg_intens_1_tp' : {"13": [], "2": [], "1": []},     # average intensity by types for 1 min interval
+            'avg_intens_15_tp': {"13": 0, "2": 0, "1": 0},     # average intensity by types for 15 min interval
+            'avg_intens_60_tp': {"13": 0, "2": 0, "1": 0},     # average intensity by types for 60 min interval 
+            'intenses_60_tp': {"13": [], "2": [], "1": []},    # intensity by types for 60 min interval (60 items )
 
             'cur_time_in_zone':0,   # how much time car stays in detection zone, duration in sec             
             'times_in_zone_1':[],   # cur_time_in_zone values massiv of 1 minute             
@@ -240,7 +246,34 @@ class Ramka:
             self.status['avg_intens_15'] = int(sum(
                 self.status['intenses_60'][-15:])/len(self.status['intenses_60'][-15:]))
 
+
+        ### Intense by vehicle types calculating section ###
         
+        # тип тс из трека надо сунуть в рамку. 
+        # потом посчитать в рамке количество каждого типа в минуту по аналогии с интенсивностью
+        # все так-же только в цикле по ключам - которые есть типы тс
+        for key in self.types:
+            n_cars_60_tp =  len(self.status['avg_intens_1_tp'][key])*60
+            self.status['intenses_60_tp'][key].append(n_cars_60_tp)
+
+            if len(self.status['intenses_60_tp'][key]) > 60:
+                self.status['intenses_60_tp'][key].pop(0)
+
+            if len(self.status['intenses_60_tp'][key]):
+                self.status['avg_intens_60_tp'][key] = int(sum(
+                    self.status['intenses_60_tp'][key])/len(self.status['intenses_60_tp'][key]))
+            else:
+                self.status['avg_intens_60_tp'][key] = 0
+            
+            if len(self.status['intenses_60_tp'][key]) <= 15:
+                self.status['avg_intens_15_tp'][key] = self.status['avg_intens_60_tp'][key]
+            else:
+                self.status['avg_intens_15_tp'][key] = int(sum(
+                    self.status['intenses_60_tp'][key][-15:])/len(self.status['intenses_60_tp'][key][-15:]))            
+            
+            # обнуляем минутный массив
+            self.status['avg_intens_1_tp'][key] = []
+
         ### Average time in zone calculating section ###
 
         # вычисляем среднее время нахождения в зоне за последнюю минуту
@@ -272,10 +305,6 @@ class Ramka:
         else:
             self.status['avg_time_in_zone_15'] = round((sum(
                 self.status['times_in_zone_60'][-15:])/len(self.status['times_in_zone_60'][-15:])), 1)
-        
-
-        ### Intense by vehicle type calculating section ###
-
         
 
             ### END ###

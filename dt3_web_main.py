@@ -263,16 +263,16 @@ def getStatus15():
     ''' an example below
     ans = { 
   				"avg_speed": [ 55, 60, 40, 100 ],
-  				"vehicle_types_intensity": [{"bus": 10, "truck": 20, "car": 50},
-                                            {"bus": 1, "truck": 2, "car": 70},
-                                            {"bus": 0, "truck": 1, "car": 90},
-                                            {"bus": 0, "truck": 0, "car": 950}],
+  				"vehicle_types_intensity": [{"13": 10, "2": 20, "1": 50},
+                                            {"13": 1, "2": 2, "1": 70},
+                                            {"13": 0, "2": 1, "1": 90},
+                                            {"13": 0, "2": 0, "1": 950}],
   				"intensity": [200, 300, 350, 400],
   				"avg_time_in_zone": [3, 1, 1, 1]
 			}
     '''
     global status15
-    status15 = q_status_get(q_status15, status15)
+    status15 = q_status_get(q_status15, status15) 
     return jsonify(status15)
 
 
