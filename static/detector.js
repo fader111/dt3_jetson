@@ -33,6 +33,8 @@ window.onload = function () {
     var hubData = document.getElementById('hub_Data'); // статус связи с коммутатором
     var polyData = document.getElementById('polyData'); //
     var calibHolder = document.getElementById('holderCalibr');
+    var holder = document.getElementById('holder');
+    holder.style.visibility = "hidden";
 
     // block of vars of calibration polygon
     var calibPolygone = {};
@@ -721,6 +723,7 @@ window.onload = function () {
             //console.log ('delButton.disabled',delButton.disabled);
             editModeAlert.innerHTML = "Режим редактирования";
             editModeAlert.style.color = '#0000FF'
+            holder.style.visibility = "visible";
         }
         else { 				// если в нем,
             editMode = 0;	// то выключить
@@ -730,6 +733,7 @@ window.onload = function () {
             editModeAlert.innerHTML = "";
             if (rects != null) rects.remove();  // удалить вс квадратики по углам полингонов если не в режиме радактирования
             sendPolyToServer(req);
+            holder.style.visibility = "hidden";
             //document.location.reload();	//перезагрузка страницы
         }
         //console.log("editButton.click, editMode=",editMode);

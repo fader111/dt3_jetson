@@ -24,7 +24,9 @@ from detect_zones import Ramka
 from transform import four_point_transform, order_points2, windowToFieldCoordinates
 from common_tracker import setInterval
 from pprint import pprint
-# import requests
+from copy import deepcopy
+import requests
+requests.packages.urllib3.disable_warnings()
 
 if 'linux' in sys.platform:
     import jetson.inference
@@ -55,6 +57,9 @@ network = network_lst[1]
 threshold = 0.2         # 0.2 for jetson inference object detection
 # tresh for cnn detection bbox and car detecting zone intersection in percents
 iou_tresh_perc = 10
+
+max_bbox_sqare = 1000   # when detection bbox too small, do not process it.
+
 width = 1920            # 640 width settings for camera capturing
 height = 1080           # 480 height for the same
 proc_width = 640        # x size of window for processing with CNN
@@ -101,6 +106,8 @@ if 'win' in sys.platform:
     video_src = "G:/U524802_1_695_0_new.avi"
 else:
     video_src = "/home/a/Videos/U524802_1_695_0_new.avi"  # 2650 x 2048
+    video_src = "/home/a/Videos/U524806_3.avi"  # 2650 x 2048
+    
 # video_src = '/home/a/Videos/lenin35_640.avi' # h 640
 # video_src = "/home/a/dt3_jetson/jam_video_dinamo.avi" gets some distorted video IDKW
 # video_src = "http://95.215.176.83:10090/video30.mjpg?resolution=&fps="
@@ -171,16 +178,21 @@ def send_det_status_to_hub(addrString, det_status):
     # передача состояний рамок на концентратор методом POST
     # addrString = 'http://' + hubAddress + '/detect'
     # must be a list to get an argument as a reference
-    print('                              hub ', addrString, det_status)
-
+    #if len(det_status)>4:
+    #    det_status = det_status[:3]
+    # print('                              hub ', addrString, det_status)
+    
+#    requests.post('https://172.16.20.240/detect',json={"cars_detect":[True, False, False, False]}, verify=False).text
     try:
         # pass
-        requests.get(addrString[0], timeout=(0.1, 0.1))
-        ans = requests.post(addrString, json={"cars_detect": det_status})
+        # requests.get(addrString[0], timeout=(0.1, 0.1))
+        ans = requests.post(addrString[0], timeout=(1.0, 1.0), json={"cars_detect": det_status}, verify=False)
+        # requests.post(addrString[0], json={"cars_detect": det_status}, verify=False)
         # return ans.text
-    except:
+        # print(' !!!!!!!!!!!!!!!!!!!!                    ', ans.text, ans.raw.read(10) , addrString)
+    except Exception as err:
         pass
-        # print('expt from  sendColorStatusToHub', )
+        print('expt from  sendColorStatusToHub', err)
         # return 'Disconnected...'
 
 
@@ -220,6 +232,8 @@ def init_status60_15_struct(n_ramki):
     status15["avg_time_in_zone"] = [0 for j in range(n_ramki)]
     # print()
 
+def bbox_square(bbox):
+    return abs((bbox[0]-bbox[2])*(bbox[1]-bbox[3]))
 
 def proc():
     # timer to restart detector when main thread crashes
@@ -308,16 +322,16 @@ def proc():
     # status of process must send to hub - device wich convert detector packets to the
     # physical signals. Do it with repeated timer. Update each 400ms
 
-    addrString = ['http://' + settings["hub"] + '/detect']
+    addrString = ['https://' + settings["hub"] + '/detect']
 
     rtUpdStatusForHub = RepeatedTimer(
         0.4, send_det_status_to_hub, addrString, ramki_status_)
-    # rtUpdStatusForHub.start()
+    rtUpdStatusForHub.start()
 
     init_status60_15_struct(len(ramki_scaled)) # initiates status60 and status15 massives
     # with proper number of detecting zones
 
-    @setInterval(15) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
+    @setInterval(60) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
     def function():
         ''' calculates detector status60 and status15 '''
         for i, ramka in enumerate(ramki_scaled):
@@ -434,6 +448,13 @@ def proc():
                 x2 = int(detection.Right)
                 y2 = int(detection.Bottom)
                 bbox = (x1, y1, x2, y2)
+                
+                # if bbox_square(bbox) < max_bbox_sqare:
+                    # print(f'bbox_square {bbox_square(bbox)}')
+
+                if bbox_square(bbox) < max_bbox_sqare:
+                    continue
+                # print(f'bbox_square {bbox_square(bbox)}')
 
                 if detection.ClassID in CLASSES:
                     # conf = round(detection.Confidence,2)
@@ -502,6 +523,9 @@ def proc():
         # if web_is_on(): # если web работает копируем исходный фрейм для него
         # print('web', q_pict.qsize())
 
+        
+        ### Remove old and bad tracks ###
+        
         # remove frozen tracks and tracks with length less then 3 points and didn't updated 
         # for more then 3 secs or if detector cant find the car for more then 10 secs.
         for track in tracks[:]:
@@ -509,7 +533,8 @@ def proc():
             # if max track life time is over, or track isn't appended for more than 1 sec, del it
             if (now - track.ts > max_track_lifetime) | \
                 ((now - track.ts > 3) & (len(track.boxes) < 3)) | \
-                    (now - track.renew_ts > 10):
+                 (now - track.renew_ts > 10) | \
+                 (abs(track.aver_speed) > 190):
                 if key_time != 0:  # when video capturing stops tracks don't delete
                     tracks.remove(track)
 
@@ -533,6 +558,10 @@ def proc():
         # when polygones change on web, it always translate to calc process
         # using Queue
         if not q_ramki.empty():
+            
+            temp_polygones = deepcopy(polygones) # need to compare with new polygones, 
+            # if they're the same, no need to stop statistic collection
+            
             # here it comes as a string, so convert
             polygones = json.loads(q_ramki.get())  # not zoomed right
             # update calibration settings
@@ -543,6 +572,7 @@ def proc():
             # stops setInterval detecting zones sliding windows
             stop.set()
 
+            
             # calculate polygones coordinates in scale
             ramki_scaled = []
             y_size, x_size = wframe.shape[:2]
@@ -572,7 +602,9 @@ def proc():
             while len(ramki_status_) < len(ramki_status):
                 ramki_status_.append(0)
             # update status60 and status15 structures according to the number of det zones
-            init_status60_15_struct(len(ramki_scaled)) 
+            # if polygones aren't the same
+            if polygones != temp_polygones:
+                init_status60_15_struct(len(ramki_scaled)) 
             # start setInterval detecting zones sliding windows
             stop = function()
 
@@ -581,8 +613,11 @@ def proc():
         # using Queue
         if not q_settings.empty():
             y_size, x_size = wframe.shape[:2]
+            # save old settings to compare them with new ones, 4548
+            # if they aren't the same, update statistics (below)
+            temp_settings = deepcopy(settings)
             settings = json.loads(q_settings.get())
-            addrString[0] = 'http://' + settings["hub"] + '/detect'
+            addrString[0] = 'https://' + settings["hub"] + '/detect'
             calibrPoints = json.loads(settings["calibration"])
             calibrPoints_sc = [[x*x_size//w_web, y*y_size//h_web]
                                for x, y in calibrPoints]
@@ -590,6 +625,12 @@ def proc():
             calib_area_length_m = float(settings['calib_zone_length'])
             calib_area_width_m = float(settings['calib_zone_width'])
             calib_area_dimentions_m = calib_area_width_m, calib_area_length_m
+            # update status60 and status15 structures according to the number of det zones
+            # if calib polygone settings aren't the same
+            if (temp_settings['calibration'] != settings['calibration']) or (
+               temp_settings['calib_zone_length'] != settings['calib_zone_length']) or (
+               temp_settings['calib_zone_width'] != settings['calib_zone_width']):
+                init_status60_15_struct(len(ramki_scaled)) 
 
         ### Changing zone colors and statistics ###
         
@@ -657,12 +698,14 @@ def proc():
         for i, ramka in enumerate(ramki_scaled):
             color_ = green if ramka.color == 1 else blue
 
-            cv2.putText(frame_show, str(i+1)+' '+str(ramka.status['cur_time_in_zone']), (ramka.center[0]-5, ramka.center[1]+5),
-            # cv2.putText(frame_show, str(i+1)+' ', (ramka.center[0]-5, ramka.center[1]+5),
+            # draw zone number & current time in zone
+            # cv2.putText(frame_show, str(i+1)+' '+str(ramka.status['cur_time_in_zone']), (ramka.center[0]-5, ramka.center[1]+5),
+            cv2.putText(frame_show, str(i+1)+' ', (ramka.center[0]-5, ramka.center[1]+5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_, 2)
+            
             # draw polygones
             cv2.polylines(frame_show, np.array(
-                [ramka.path], np.int32), 1, color_, 3)
+                [ramka.path], np.int32), 1, color_, 2)
             # draw arrows
             # for j, arrow in enumerate(poly):
             for j in range(4):
@@ -765,7 +808,6 @@ def proc():
             cv2.putText(frame_show, frame_str, (15, 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             # cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
-            # old one cv2.imshow("Frame", wframe) # the old one
             # cv2.imshow("Frame", frame_show)
 
             if WITH_TOP_VIEW_IMG:

@@ -27,6 +27,25 @@
         [Install]
         WantedBy=multi-user.target
 
+       !!!!!! однако для dt3 сработала следующая конфигурация:
+
+        [Unit]
+        Description=transport detector service
+        After=multi-user.target
+
+        [Service]
+        Type=simple
+        User=a
+        Group=a
+        WorkingDirectory=/home/a
+        ExecStart=/home/a/dt3_start.sh
+
+        Restart=on-failure
+        RestartSec=2s
+
+        [Install]
+        WantedBy=multi-user.target 
+
 
         В секции Unit мы даем краткое описание нашему файлу и говорим с помощью опции After,
         что нужно запускать этот скрипт в многопользовательском режиме (multi-user).

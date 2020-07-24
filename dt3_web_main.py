@@ -16,10 +16,6 @@ from conf_editor import *
 from get_net_settings import *
 from pprint import pprint
 
-# import RPi.GPIO as GPIO
-# GPIO.setmode(GPIO.BOARD)
-# GPIO.setup(7, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
 from werkzeug.contrib.fixers import ProxyFix
 from functools import wraps, update_wrapper
 from datetime import datetime
@@ -30,11 +26,12 @@ if 'win' in sys.platform:
     path = 'C:/Users/ataranov/Projects/dt3_jetson/'  # путь до папки проекта в windows
 else:
     path = '/home/a/dt3_jetson/'  # путь до папки проекта в linux
+    
+    import RPi.GPIO as GPIO
+    GPIO.setmode(GPIO.BOARD)
+    GPIO.setup(7, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-ipStatus = {"ip": '192.168.0.100/24',
-            "gateway": '192.168.0.1',
-            "hub": '192.168.0.39'
-            }
+ipStatus = {}
             
 det_status = [0] # массив для сохранения статуса детектора (пока 1 значение) [GREEN_TAG] из вычислительного потока
 polygones = {} # рамки со всеми потрохами
@@ -136,19 +133,18 @@ def sendSettingsToServer():
     # тут оказываются старые полигоны, буду читать новые полигоны из файла, потом их обновлять.
     res = json.loads(getPolyFromServer())
     updatePoly(res)
-    
-    
+     
     return json.dumps({'ip': ip, 'gateway': gateway, 'hub': hub})
 
 
 def sendHubStatusToWeb():
     hubAddress = ipStatus['hub']
-    addrString = 'http://' + hubAddress + '/detect'
+    addrString = 'https://' + hubAddress + '/detect'
     # отладка поиск утечек
     # tr_initial.print_diff()
     try:
-        requests.get(addrString, timeout=(0.1, 0.1))
-        ans = requests.post(addrString, json={"cars_detect": det_status})
+        # ans = requests.post(addrString, json={"cars_detect": det_status})
+        ans = requests.post(addrString[0], timeout=(1.0, 1.0), json={"cars_detect": det_status}, verify=False)
         # print('hub ',addrString,)
         return ans.text
     except:
@@ -259,17 +255,8 @@ def getStatus60():
 @app.route('/status15', methods=['GET'])
 @auth.login_required
 def getStatus15():
-    ''' response for client request about traffic parameters in period of 15 minutes'''
-    ''' an example below
-    ans = { 
-  				"avg_speed": [ 55, 60, 40, 100 ],
-  				"vehicle_types_intensity": [{"13": 10, "2": 20, "1": 50},
-                                            {"13": 1, "2": 2, "1": 70},
-                                            {"13": 0, "2": 1, "1": 90},
-                                            {"13": 0, "2": 0, "1": 950}],
-  				"intensity": [200, 300, 350, 400],
-  				"avg_time_in_zone": [3, 1, 1, 1]
-			}
+    ''' response for client request about traffic parameters in period of 15 minutes
+        an example below
     '''
     global status15
     status15 = q_status_get(q_status15, status15) 
@@ -353,10 +340,11 @@ def gpio_button_handler(channel):
     """ восcтанавливает дефолтные настройки IP при замыкании пина 5 на землю"""
     # print ("сработка set_Default_IP_Settings!!!")
     ts = time.time()
-    while 0:#GPIO.input(7) == False:  # при замыкании кнопки
-        # print("false")
-        time.sleep(1)
-        if (time.time() - ts > 2):
+    if not winMode:
+        if GPIO.input(7) == False:  # при замыкании кнопки
+            # print("false")
+            #time.sleep(1)
+            #if (time.time() - ts > 2):
             print("Restore Default IP Settings")
             print("ip = 192.168.0.34/24, default gw = 192.168.0.254")
             set_Default_IP_Settings()
@@ -368,7 +356,8 @@ def main_process():
 
 
 # в главном треде срабатывает вызов при нажатии на кнопку пин 5.
-# GPIO.add_event_detect(7, GPIO.FALLING, callback=gpio_button_handler, bouncetime=100)
+if not winMode:
+    GPIO.add_event_detect(7, GPIO.FALLING, callback=gpio_button_handler, bouncetime=100)
 
 ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
             "gateway": get_gateway(),
