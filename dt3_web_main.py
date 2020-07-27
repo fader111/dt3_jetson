@@ -139,20 +139,21 @@ def sendSettingsToServer():
 
 def sendHubStatusToWeb():
     hubAddress = ipStatus['hub']
-    addrString = 'https://' + hubAddress + '/detect'
+    addrString = ['https://' + hubAddress + '/detect']
     # отладка поиск утечек
     # tr_initial.print_diff()
     try:
         # ans = requests.post(addrString, json={"cars_detect": det_status})
-        ans = requests.post(addrString[0], timeout=(1.0, 1.0), json={"cars_detect": det_status}, verify=False)
+        # ans = requests.post(addrString[0], timeout=(1.0, 1.0), json={"cars_detect": addrString[0]}, verify=False)
+        ans = requests.get(addrString[0], timeout=(1.0, 1.0), json={}, verify=False)
         # print('hub ',addrString,)
-        return ans.text
+        return addrString[0] #ans.text
     except:
         # print('expt from  sendHubStatusToWeb', )
         return 'Disconnected...'
 
 
-@app.route('/showStatusHub', methods=['POST'])
+@app.route('/showStatusHub', methods=['GET','POST'])
 def showStatusHub():
     """shows hub status on web page"""
     return json.dumps(sendHubStatusToWeb())

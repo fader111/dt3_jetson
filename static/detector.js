@@ -741,10 +741,11 @@ window.onload = function () {
 
     // статусы полигонов считывать с сервера и обновлять на странице.
     function circleStatusRequest() {
-        getStatusFromServer(polygones);
+        // getStatusFromServer(polygones);
         getStatusHubFromServer();
     };
-    // setInterval(circleStatusRequest, 40);
+    // изменено, см ниже debugInfoShow
+    // setInterval(circleStatusRequest, 400);
     // setInterval(getTsTableFromServer,1000) // обновляет значение таблицы с количеством проехавших тс
 
     function notEditModeAlert() {
@@ -772,10 +773,25 @@ window.onload = function () {
         //if (event.keyCode == shift && capslock)console.log("shiftCapslock");
         //console.info("Нажата клавиша",kep,"d - дигностика связи");
         if (kep == 68) { // 68 - код клавиши d; 46 -код клавиши del
-            if (hubData.style.visibility == "hidden") hubData.style.visibility = "visible"; else hubData.style.visibility = "hidden";
-            if (polyData.style.visibility == "hidden") polyData.style.visibility = "visible"; else polyData.style.visibility = "hidden";
-        }
-        ;
+            // старое if (hubData.style.visibility == "hidden") hubData.style.visibility = "visible"; else hubData.style.visibility = "hidden";
+            // старое if (polyData.style.visibility == "hidden") polyData.style.visibility = "visible"; else polyData.style.visibility = "hidden";
+            // выключает периодические запросы, когда поле не отображается
+            if (hubData.style.visibility == "hidden")
+            {
+                hubData.style.visibility = "visible";
+                //включает генерацию POST запросов о состоянии связи с HUB'ом
+                intID = setInterval(circleStatusRequest, 400);
+                console.log('setInterval', intID);
+
+            }
+            else {
+                hubData.style.visibility = "hidden";
+                //и выключает когда состояние хаба не мониторится на клиенте,
+                // чтобы не засорять сеть
+                console.log('crearInterval', intID);
+                clearInterval(intID);
+            }
+        };
     };
     document.body.onkeydown = debugInfoShow;
 

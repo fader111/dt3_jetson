@@ -54,28 +54,27 @@ function sendSettingsToServer(req){
 
 function getStatusFromServer(polygones) {
 	$.ajax({
-                type: "POST",
 				url: "/showStatus",
 				data:"",
                 type: 'POST',
                 success: function(response) {
                     var json = jQuery.parseJSON(response)
                     {
-						document.getElementById("polyData").innerHTML = "state: "+response; // Выводим ответ сервера
+						document.getElementById("polyData").innerHTML = "address: "+response; // Выводим ответ сервера
 						//document.getElementById("tsNumberTable_1_0").innerHTML = json[1][0]; // раскомментирование этого приводит к тому что перестает работать отображение рамок на картинке
 						//document.getElementById("tsNumberTable_1_1").innerHTML = json[1][1]; // то-же что и выше. возможно затык выполнения на этой строчке из-за ошибки.
-						polyStatus = json[0];
-						// console.log('json[0]=',json[0]);
-						status='';
-						for(i=0;i<polyStatus.length;i++){
-							if( polyStatus[i] == '0' | polyStatus[i] == '1' ) status += polyStatus[i];
-						};
-						for (i=0;i<(polygones.length);i++){
-							if (status[i]==0)
-								polygones[i].attr({stroke:"red",fill:"red"});
-							else if (status[i]==1)
-								polygones[i].attr({stroke:"green",fill:"green"});
-						}
+						// polyStatus = json[0];
+						// // console.log('json[0]=',json[0]);
+						// status='';
+						// for(i=0;i<polyStatus.length;i++){
+						// 	if( polyStatus[i] == '0' | polyStatus[i] == '1' ) status += polyStatus[i];
+						// };
+						// for (i=0;i<(polygones.length);i++){
+						// 	if (status[i]==0)
+						// 		polygones[i].attr({stroke:"red",fill:"red"});
+						// 	else if (status[i]==1)
+						// 		polygones[i].attr({stroke:"green",fill:"green"});
+						// }
 					};
 
                     //console.log('respons=+=',json);
@@ -87,7 +86,6 @@ function getStatusFromServer(polygones) {
 }
 function getTsTableFromServer() {
 	$.ajax({
-                type: "POST",
 				url: "/showTsTable",
 				data:"",
                 type: 'POST',
@@ -106,10 +104,9 @@ function getTsTableFromServer() {
 }
 function getStatusHubFromServer() {
 	$.ajax({
-                type: "POST",
 				url: "/showStatusHub",
 				data:"",
-                type: 'POST',
+                type: 'GET',
                 success: function(response) {
                     var json = jQuery.parseJSON(response)
                     {
