@@ -385,3 +385,96 @@ TODO:
 			далее проверяет очередь сетевых настроек ( или вообще всех настроек???)
 			на наличие обновлений. при изменении из веба в эту очеред пушатся новые настройки, 
 			после попадания их туда, main proc их вычитывает и применяет 
+
+
+Настройка gunicorn + nginx 
+
+gunicorn - основной веб сервер, nginx - проксирование для https.
+обмен между gunicorn и nginx происходит через веб сокет ( файл)
+оба сервиса работают через systmclt. 
+редактирование gunicorn сервиса: 
+
+sudo nano /etc/systemd/system/rundet.service
+
+Description=transport detector service
+After=multi-user.target
+
+[Service]
+Type=simple
+User=a
+Group=www-data
+WorkingDirectory=/home/a
+ExecStart=/home/a/dt3_start.sh
+
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+
+sudo nano /home/a/dt3_start.sh
+
+#!/bin/bash
+echo "text" > /home/a/logg.txt
+if ps aux | grep [g]unicorn;
+then
+kill -9 `pidof sudo python3`
+sleep 2
+echo "gunicorn process killed"
+fi
+if ps aux | grep [p]ython;
+then
+kill -9 `pidof sudo python3`
+sleep 2
+echo "python3 process killed"
+fi
+echo "start transport detector type2" 
+arg=$1
+sleep 2
+#sudo python3 /home/pi/dp/dp_web_main.py
+# cd /home/a/dt3_jetson/ && sudo /usr/local/bin/gunicorn --threads 10 --workers 1 --bind 0.0.0.0:8080 dt3_web_main:app
+cd /home/a/dt3_jetson/ && sudo /usr/local/bin/gunicorn --threads 10 --workers 1 --bind unix:/home/a/dt3_jetson/dt3.sock -m 777 dt3_web_main:app
+exit 0
+
+--bind unix:/home/a/dt3_jetson/dt3.sock - gunicorn шлет все в сокет. сокет создается в указанном месте 
+автоматически
+-m 777 - назначает права доступа сокету 
+
+
+sudo nano /etc/nginx/sites-avaliable/detector
+server {
+        listen 443 ssl;
+        server_name _;
+        ssl_certificate /var/www/dt3/dt3.crt;
+        ssl_certificate_key /var/www/dt3/dt3.key;
+
+        location / {
+                include proxy_params;
+                proxy_pass http://unix:/home/a/dt3_jetson/dt3.sock;
+        }
+}
+
+server {
+        listen 80;
+        server_name _;
+        location / {
+                return 301 https://$host$request_uri;
+        }
+}
+
+sudo systemctl restart rundet
+sudo systemctl restart nginx
+sudo systemctl daemon-reload
+
+если на клиенте 502 Bad Gateway -
+
+sudo systemctl status rundet
+sudo systemctl status nginx
+
+
+все должно быть Active и работать
+если нет лог - cat /var/log/nginx/error.log
+
