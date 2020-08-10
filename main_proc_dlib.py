@@ -116,7 +116,7 @@ else:
 # video_src = "G:/fotovideo/video_src/usb2.avi"
 
 # True - camera, False - video file /80ms per frame on camera, 149 on video
-USE_CAMERA = False
+USE_CAMERA = True
 USE_GAMMA = False  # Gamma correction - True - for night video
 
 # bboxes = []  # bbox's of each frame # candidate for removing

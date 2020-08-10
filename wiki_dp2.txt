@@ -10,13 +10,16 @@
 	тут все предусмотрено, чтобы такой ситуации не было. с длинами очередей все ок. 2.12 обнаружил что оч много вывода в консоль.
 	отправил в запускающем скрипте /home/a/startdet.sh весть вывод в > /dev/null (в никуда) пока все работает. но надо еще смотерть.
 
-	выключить x server
+	( !!!Ахтунг!!! Это не работает в ubuntu 18.04 ) выключить x server
+
+	как работает смотри в wiki_dt3_type2
 	systemctl list-units --type service --all      will list all services. For me it lists "gdm.service".
 	systemctl status gdm.service - статус
 	systemctl disable gdm.service - выкл 
  	systemctl enable gdm.service - вкл 
 	systemctl stop gdm.service - стоп
  	systemctl start gdm.service - старт 
+
 
 ToDo:
 	пересобрать inference чтобы в консольна не валились текстовые сообщения

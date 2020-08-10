@@ -130,7 +130,7 @@ TODO:
 		( DONE ) - делать автозапуск на гуникорне при старте
 		( DONE )- исправить справку 
 		
-		- сделать https
+		( DONE )- сделать https - описание как - см. ниже.
 		- выключать иксы 
 		- положить образ на сервер 
 		
@@ -478,3 +478,10 @@ sudo systemctl status nginx
 все должно быть Active и работать
 если нет лог - cat /var/log/nginx/error.log
 
+выключение Х сервера в Ubuntu 18.04 
+sudo systemctl set-default multi-user.target
+назад
+sudo systemctl set-default graphical.target
+
+временно включить иксы:
+sudo systemctl start gdm3.service
