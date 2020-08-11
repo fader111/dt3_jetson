@@ -826,7 +826,7 @@ def proc():
                 key_time = 0
             if key == ord("o"):
                 key_time = 1
-            if key == ord("d"):
+            if key == ord("t"):
                 tracks = []  # kill all tracks pressing d
         if frm_number % 10 == 0:
             print(f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks)}')
