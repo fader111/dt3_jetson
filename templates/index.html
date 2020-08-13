@@ -83,24 +83,24 @@
               <table class="table" style="text-align: left; font:14px Arial, Helvetica, sans-serif;" border="0" cellpadding="1" cellspacing="1">
             <tbody>
               <tr>
-                <td style="width:500px">IP адрес камеры / маска подсети:</td>
+                <td style="width:500px">IP адрес камеры:</td>
                             <!--required pattern='#^[0-9]+$#'-->
-                <td><input style="width:130px" class="" form="settinsForm" id="ip_address" name="ip" type="text" value= "{{ ipStatus.ip }}"
+                <td><input style="width:120px" class="" form="settinsForm" id="ip_address" name="ip" type="text" value= "{{ ipStatus.ip }}"
                                     pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
               </tr>
-              <!-- <tr>
+              <tr>
                 <td style="width:500px">Маска подсети:</td>
-                <td><input style="width:100px" class="" form="settinsForm" id="ip_netmask" type="text" name="mask" value= "{{ ipStatus.mask }}"
+                <td><input style="width:120px" class="" form="settinsForm" id="ip_netmask" type="text" name="mask" value= "{{ ipStatus.mask }}"
                                     pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
-              </tr> -->
+              </tr>
               <tr>
                 <td style="width:500px">IP адрес шлюза:</td>
-                <td><input style="width:130px" class="" form="settinsForm" id="ip_address_gateway" type="text" name="gateway" value= "{{ ipStatus.gateway }}"
+                <td><input style="width:120px" class="" form="settinsForm" id="ip_address_gateway" type="text" name="gateway" value= "{{ ipStatus.gateway }}"
                                     pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
               </tr>
               <tr>
                 <td style="width:500px">IP адрес концентратора:</td>
-                <td><input style="width:130px" class="" form="settinsForm" id="ip_address_hub" type="text" name="hub" value= "{{ ipStatus.hub }}"
+                <td><input style="width:120px" class="" form="settinsForm" id="ip_address_hub" type="text" name="hub" value= "{{ ipStatus.hub }}"
                                     pattern="\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"></td>
               </tr>
                         <tr>
@@ -160,7 +160,7 @@
             <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
             <h4 class="modal-title">Справка</h4>
           </div>
-          <div class="modal-body" style="font:12px Arial, Helvetica, sans-serif">
+          <div class="modal-body" style="font:12px Arial, Helvetica, sans-serif; text-align: left">
             <p>Для задания зон детектирования нажмите кнопку "Редактировать". Нарисуйте мышкой прямоугольник левым кликом и перетаскиванием. Измените его форму кликая и перетаскивая желтые квадраты по углам полигона.
                 Двигайте полигон целиком кликом на нем и перетаскиванием. Аналогичным образом можно создать до 4-х полигонов на одну камеру. Двойной клик удаляет полигон.
                 Номер полигона добавляется и удаляется автоматически. Редактировать можно как новые, так и ранее созданные полигоны. Сохраните изменения нажатием кнопки "Сохранить".</p>
@@ -175,9 +175,16 @@
                 расположить точки калибровочного полигона так, чтобы на дорожном полотне они представляли собой правильный прямоугольник. Используя дорожные конусы постройте из них правильный прямоугольник, 
                 измерьте ширину и длину этого прямоугольника в метрах, в кадре совместите углы полигона с конусами. Закончив калибровку, нажмите на кнопку "Сохранить калибровку".
                 Введите измеренную длину и ширину калибровочного полигона в разделе "Настройки детектора". Соханите изменения нажатием кнопки сохранения.
+                Введите измеренную длину и ширину калибровочного полигона в разделе "Настройки детектора". Соханите изменения нажатием кнопки сохранения.
                 <p>Кнопка "Настройки детектора" выводит таблицу параметров, которые задают настройки IP - адрес камеры, маску подсети, адрес шлюза по умолчанию, а также IP адрес концентратора.
                 Измените параметры при необходимости, сохраните их кнопкой "Сохранить изменения" и закройте окно.</p>
-                <p>Для сброса в заводские настройки IP, а также для более подробной информации, смотри "Руководство по эксплуатации".</p>
+                <p>Для сброса в заводские настройки IP:
+                на плате, подключенной к GPIO порту есть кнопка сброса в настройки IP по умолчанию. Откройте крышку устройства и ажмите на нее на работающем устройстве,
+                настройки установятся в следющие:<br>
+                Ip адрес: 192.168.0.34<br>
+                Маска подсети: 255.255.255.0<br>
+                Шлюз по умолчанию: 192.168.0.254<br>
+                Для более подробной информации, смотри "Руководство по эксплуатации".</p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-default" data-dismiss="modal">Закрыть</button>

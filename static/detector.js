@@ -973,6 +973,7 @@ window.onload = function () {
         // console.log("calibrationPoints стринги", JSON.stringify(calibrationPoints));
         let arg = {
             "ip": ip_address.value,
+            "ip_netmask": ip_netmask.value,
             "gateway": ip_address_gateway.value,
             "hub": ip_address_hub.value,
             "calibration": JSON.stringify(calibrationPoints),

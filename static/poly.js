@@ -47,7 +47,7 @@ function sendSettingsToServer(req){
 			// console.log(response); // {"ip": "/0", "gateway": "", "hub": "0.0.0.0"}
 		},
 		error: function(error) {
-			console.log(error);
+			(error);
 		}
 	});
 }

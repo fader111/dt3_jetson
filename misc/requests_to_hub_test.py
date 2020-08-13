@@ -37,7 +37,6 @@ def send_det_status_to_hub(addrString, det_status):
         print('expt from  sendColorStatusToHub', error)
         # return 'Disconnected...'
     # print(f'first {time.time()-ts:.7f}')
-    1201
     # ts = time.time()
     # ans = requests.post(addrString[0], json={"cars_detect": det_status}, verify=False)
     # print('alala')

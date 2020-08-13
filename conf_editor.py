@@ -50,3 +50,47 @@ def file_edit_jetson(fname, ip, gate):
     except:
         print ('conf writing faile')
         return False
+
+def file_edit_jetson_network_interfaces(fname, ip, mask, gate):
+    """ edit file /etc/network/interfaces """
+    # due to switch off network manager 
+    # use /etc/network/interfaces
+    addr_val = 'address ' 
+    mask_val = 'netmask ' 
+    gate_val = 'gateway '
+
+    # whole string - address1=192.168.0.190/24,192.168.0.254
+    if (type(fname)     is not str) | \
+        (type(ip)       is not str) | \
+        (type(mask)     is not str) | \
+        (type(gate)     is not str ):
+        print ('file_edit Bad params!')
+        return False
+    try:
+        with open(fname, 'r') as f:
+            file = f.read()
+    except:
+        print('not readed')
+    
+    if True:
+        strs = file.split('\n')
+        for i, _str in enumerate(strs):
+            if (addr_val in _str) & (not '#' in _str):
+                strs[i]= addr_val + ip
+            if (mask_val in _str) & (not '#' in _str):
+                strs[i]= mask_val + mask
+            if (gate_val in _str) & (not '#' in _str):
+                strs[i]= gate_val + gate
+    # except:
+        # print('st2')
+    
+    try:
+        out = ''
+        for _str in strs:
+            out+=_str+'\n'
+        with open(fname, 'w') as f:
+            f.write(out)
+        return True
+    except:
+        print ('conf writing faile')
+        return False

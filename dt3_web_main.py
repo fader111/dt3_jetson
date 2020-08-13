@@ -1,57 +1,64 @@
 ''' Taskkill /IM python.exe /F'''
 ''' Transport Detector Type2 with web interface '''
+
 import cProfile
 import sys, os, time, cv2, socket
 from flask import Flask, session, render_template, Response, request, json, jsonify, make_response
 from flask_httpauth import HTTPBasicAuth
-# from flask_session import Session
-# from multiprocessing import Process, Queue, cpu_count #это фризит процесс.
-# from multiprocessing import Process, Queue
 from multiprocessing.dummy import Process, Queue
 from threading import Timer
-#from camera_pi import Camera
-# from RepeatedTimer_ import RepeatedTimer
 from main_proc_dlib import *
 from conf_editor import *
 from get_net_settings import *
 from pprint import pprint
-
 from werkzeug.contrib.fixers import ProxyFix
 from functools import wraps, update_wrapper
 from datetime import datetime
 import requests
+# import
+# from flask_session import Session
+# from multiprocessing import Process, Queue, cpu_count #это фризит процесс.
+# from multiprocessing import Process, Queue
+#from camera_pi import Camera
+# from RepeatedTimer_ import RepeatedTimer
+
 # import logging
 
 if 'win' in sys.platform:
     path = 'C:/Users/ataranov/Projects/dt3_jetson/'  # путь до папки проекта в windows
 else:
     path = '/home/a/dt3_jetson/'  # путь до папки проекта в linux
-    
+
     import RPi.GPIO as GPIO
     GPIO.setmode(GPIO.BOARD)
     GPIO.setup(7, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 ipStatus = {}
-            
-det_status = [0] # массив для сохранения статуса детектора (пока 1 значение) [GREEN_TAG] из вычислительного потока
-polygones = {} # рамки со всеми потрохами
+
+# массив для сохранения статуса детектора (пока 1 значение) [GREEN_TAG] из вычислительного потока
+det_status = [0]
+polygones = {}  # рамки со всеми потрохами
 
 # defafult mass for detector status in 15 min interval
-status15 = {  	"avg_speed": [],
-  				"vehicle_types_intensity": [],
+status15 = {"avg_speed": [],
+            "vehicle_types_intensity": [],
+            "intensity": [],
   				"intensity": [], 
-  				"avg_time_in_zone": []
+            "intensity": [],
+            "avg_time_in_zone": []
             }
 
 # defafult mass for detector status in 60 min interval
-status60 = {  	"avg_speed": [],
-  				"vehicle_types_intensity": [],
+status60 = {"avg_speed": [],
+            "vehicle_types_intensity": [],
+            "intensity": [],
   				"intensity": [], 
-  				"avg_time_in_zone": []
+            "intensity": [],
+            "avg_time_in_zone": []
             }
 
 app = Flask(__name__)
-auth = HTTPBasicAuth() # for authentication
+auth = HTTPBasicAuth()  # for authentication
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -59,11 +66,16 @@ def index():
     full_path = path + "settings.dat"
 
     settings = read_setts_from_syst(full_path)
-    ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
+    # that is for Nework Manager version
+    # ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
+    #             "gateway": get_gateway(),
+    #             "hub": get_hub(full_path)
+    #             }
+    ipStatus = {"ip": get_ip(),
+                "mask": get_mask(),
                 "gateway": get_gateway(),
                 "hub": get_hub(full_path)
                 }
-
     return render_template('index.html', ipStatus=ipStatus, settings=settings)
 
 
@@ -83,19 +95,21 @@ def gen():
         frame_ = cv2.imencode('.jpg', frame)[1].tostring()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_ + b'\r\n')
-        #time.sleep(0.1)
+        # time.sleep(0.1)
 
 
 @app.route('/sendSettingsToServer', methods=['GET', 'POST'])
 def sendSettingsToServer():
     """ calls any time, when settings change in web client, 
         save settings to file """
-    #print('request.form',
+    # print('request.form',
     #      request.form)  # ImmutableMultiDict([('gateway', '192.168.0.254'), ('hub', '192.168.0.39'), ('ip', '192.168.0.16')])
     settings_file_path = path + 'settings.dat'
     if request.method == 'POST':
+        print ('req', request.form)
         ip = request.form["ip"]
-        # mask = request.form['mask'] если в посылке нет такого поля прога тут зависает нахрен.
+        # если в посылке нет такого поля прога тут зависает нахрен.
+        mask = request.form["ip_netmask"]
         # print('method post',mask)
         gateway = request.form["gateway"]
         hub = request.form["hub"]
@@ -105,35 +119,39 @@ def sendSettingsToServer():
     ipStatus["hub"] = hub
     # print('from python: ip', ip,'  mask',mask, '  gateway',gateway,'  hub',hub)
     ip_ext = ip  # +'/24' # костыль пока маску не сделал
-    change_ip_on_jetson(ip_ext, gateway)  # меняет ip и default gw
-    applyIPsettingsJetson(gateway)  # применить все настройки перегрузить сетевые службы
+    # change_ip_on_jetson(ip_ext, gateway)  # меняет ip и default gw - версия с network Manager
+    # меняет ip и default gw - версия с /etc/network/interfaces
+    change_ip_on_jetson_nw_inf(ip, mask, gateway)
+    # применить все настройки перегрузить сетевые службы
+    applyIPsettingsJetson(gateway)
     with open(settings_file_path, 'w') as f:  # Открываем на чтение и запись
         # записываем только то, что не сохранится в линуксе - адрес хаба и калибровачный полигон
         # остальное - ip маска и шлюз применится в линуксе и сохранится. записывать нет надо.
         # f.write(json.dumps({'hub': hub, 'calibration' : calibPoly}))  # Пишем данные в файл.
-        f.write(json.dumps({"hub": hub, # Пишем данные в файл.
-                            "calibration" : calibPoly,
-                            "calib_zone_length" : calib_zone_length,
-                            "calib_zone_width" : calib_zone_width
-                        }))
+        f.write(json.dumps({"hub": hub,  # Пишем данные в файл.
+                            "calibration": calibPoly,
+                            "calib_zone_length": calib_zone_length,
+                            "calib_zone_width": calib_zone_width
+                            }))
         print('IP settings saved!')
     # put polygones and settings to the queue for update them on main_proc_dlib
     # need to put both, because poly depends on calibration, which are in the settings
 
-    updateSettings(json.dumps({ 'hub'               : hub,
-                                'calibration'       : calibPoly,
-                                'calib_zone_length' : calib_zone_length,
-                                'calib_zone_width'  : calib_zone_width
-                                }))
-    time.sleep(1) # needs to be sure that settings are inplemented before polygones
+    updateSettings(json.dumps({'hub': hub,
+                               'calibration': calibPoly,
+                               'calib_zone_length': calib_zone_length,
+                               'calib_zone_width': calib_zone_width
+                               }))
+    # needs to be sure that settings are inplemented before polygones
+    time.sleep(1)
     # because settings queue is a bit slower then polygones queue ( ?? need one queue for both polygones and settings??)
     # otherwise old calibration zone dimentions are in polygones.
-    
-    #updatePoly(json.dumps(polygones)) #похоже этого недостаточно. 
+
+    # updatePoly(json.dumps(polygones)) #похоже этого недостаточно.
     # тут оказываются старые полигоны, буду читать новые полигоны из файла, потом их обновлять.
     res = json.loads(getPolyFromServer())
     updatePoly(res)
-     
+
     return json.dumps({'ip': ip, 'gateway': gateway, 'hub': hub})
 
 
@@ -145,15 +163,16 @@ def sendHubStatusToWeb():
     try:
         # ans = requests.post(addrString, json={"cars_detect": det_status})
         # ans = requests.post(addrString[0], timeout=(1.0, 1.0), json={"cars_detect": addrString[0]}, verify=False)
-        ans = requests.get(addrString[0], timeout=(1.0, 1.0), json={}, verify=False)
+        ans = requests.get(addrString[0], timeout=(
+            1.0, 1.0), json={}, verify=False)
         # print('hub ',addrString,)
-        return addrString[0] #ans.text
+        return addrString[0]  # ans.text
     except:
         # print('expt from  sendHubStatusToWeb', )
         return 'Disconnected...'
 
 
-@app.route('/showStatusHub', methods=['GET','POST'])
+@app.route('/showStatusHub', methods=['GET', 'POST'])
 def showStatusHub():
     """shows hub status on web page"""
     return json.dumps(sendHubStatusToWeb())
@@ -242,7 +261,7 @@ def q_status_get(queue, status):
         ans = queue.get()
         status = ans
     return status
-        
+
 
 @app.route('/status60', methods=['GET'])
 @auth.login_required
@@ -260,7 +279,7 @@ def getStatus15():
         an example below
     '''
     global status15
-    status15 = q_status_get(q_status15, status15) 
+    status15 = q_status_get(q_status15, status15)
     return jsonify(status15)
 
 
@@ -295,46 +314,69 @@ def updateSettings(settings):
 def applyIPsettingsLinux(gate):
     """apply all the network settings, dcpcd service after changes on web page"""
     if not winMode:
-        _comm = os.popen("sudo ip addr flush dev eth0 && sudo systemctl restart dhcpcd.service")
+        _comm = os.popen(
+            "sudo ip addr flush dev eth0 && sudo systemctl restart dhcpcd.service")
         _comm.read()
         time.sleep(10)  # время необходимое сетевым службам чтобы рестартовать
-        routComm = os.popen("sudo route del default")  # нужно для обновления адреса шлюза по умолчанию
+        # нужно для обновления адреса шлюза по умолчанию
+        routComm = os.popen("sudo route del default")
         routComm.read()
         # print('gate from change func = ', gate)
-        gwComm = os.popen("sudo route add default gw " + gate)  # нужно для обновления адреса шлюза по умолчанию
+        # нужно для обновления адреса шлюза по умолчанию
+        gwComm = os.popen("sudo route add default gw " + gate)
         gwComm.read()
 
 
 def applyIPsettingsJetson(gate):
     """apply all the network settings, restart netw manager service after changes on web page"""
     if not winMode:
-        _comm = os.popen("sudo ip addr flush dev eth0 && sudo service network-manager restart")
+        # Network Manager version 
+        # _comm = os.popen(
+            # "sudo ip addr flush dev eth0 && sudo service network-manager restart") 
+        # CURRENT VERSION /etc/network/interfaces 
+        _comm = os.popen(
+            "sudo ip addr flush dev eth0 && sudo ifdown eth0 && sudo ifup eth0") 
         _comm.read()
-        time.sleep(10)  # время необходимое сетевым службам чтобы рестартовать
-        routComm = os.popen("sudo route del default")  # нужно для обновления адреса шлюза по умолчанию
+        time.sleep(5)  # время необходимое сетевым службам чтобы рестартовать
+        # нужно для обновления адреса шлюза по умолчанию
+        routComm = os.popen("sudo route del default")
         routComm.read()
         # print('gate from change func = ', gate)
-        gwComm = os.popen("sudo route add default gw " + gate)  # нужно для обновления адреса шлюза по умолчанию
+        # нужно для обновления адреса шлюза по умолчанию
+        gwComm = os.popen("sudo route add default gw " + gate)
         gwComm.read()
 
 
-def change_ip_on_host(ip, gate, fname='/etc/dhcpcd.conf'):  # 129.168.0.16/24 
+def change_ip_on_host(ip, gate, fname='/etc/dhcpcd.conf'):  # 129.168.0.16/24
     """ ONLY FOR RASPBERRY!! changes ip: edit /etc/dhcpcd.conf file and restart network """
     file_edit(fname, 'inform', ip)
     file_edit(fname, 'static routers', gate)
 
 
 def change_ip_on_jetson(ip, gate, fname='/etc/NetworkManager/system-connections/Wired connection 1'):
-    """ ONLY FOR JETSON cahanges ip, mask, gate in file /etc/NetworkManager/system-connections/Wired connection 1 """
+    """ ONLY FOR JETSON with Network Manager
+        cahanges ip, mask, gate in file /etc/NetworkManager/system-connections/Wired connection 1 """
     if not winMode:
         file_edit_jetson(fname, ip, gate)
 
 
-def set_Default_IP_Settings(def_ip="192.168.0.34/24", def_gateway="192.168.0.254"):
+def change_ip_on_jetson_nw_inf(ip, mask, gate, fname='/etc/network/interfaces'):
+    """ CURRENT VERSION 
+        ONLY FOR JETSON without Network Manager 
+        cahanges ip, mask, gate in file /etc/network/interfaces """
+    if not winMode:
+        # file_edit_jetson(fname, ip, gate)
+        file_edit_jetson_network_interfaces(fname, ip, mask, gate)
+
+
+def set_Default_IP_Settings(def_ip="192.168.0.34/24", def_mask="255.255.255.0", def_gateway="192.168.0.254"):
     """ записывает новые ip и default gw в файл настроек сети и применяет их """
     if not winMode:
-        change_ip_on_jetson(def_ip, def_gateway)
-        applyIPsettingsJetson(def_gateway)  # применить все настройки перегрузить сетевые службы
+        # change_ip_on_jetson(def_ip, def_gateway) # version for Network Manager
+        # version for /etc/network/interfaces
+        change_ip_on_jetson_nw_inf(def_ip, def_mask, def_gateway)
+        # применить все настройки перегрузить сетевые службы
+        applyIPsettingsJetson(def_gateway)
 
 
 def gpio_button_handler(channel):
@@ -344,8 +386,8 @@ def gpio_button_handler(channel):
     if not winMode:
         if GPIO.input(7) == False:  # при замыкании кнопки
             # print("false")
-            #time.sleep(1)
-            #if (time.time() - ts > 2):
+            # time.sleep(1)
+            # if (time.time() - ts > 2):
             print("Restore Default IP Settings")
             print("ip = 192.168.0.34/24, default gw = 192.168.0.254")
             set_Default_IP_Settings()
@@ -358,13 +400,14 @@ def main_process():
 
 # в главном треде срабатывает вызов при нажатии на кнопку пин 5.
 if not winMode:
-    GPIO.add_event_detect(7, GPIO.FALLING, callback=gpio_button_handler, bouncetime=100)
+    GPIO.add_event_detect(
+        7, GPIO.FALLING, callback=gpio_button_handler, bouncetime=100)
 
 ipStatus = {"ip": get_ip() + '/' + get_bit_number_from_mask(get_mask()),
             "gateway": get_gateway(),
             "hub": get_hub(path+"settings.dat")
             }
-print ('ipStatus-', ipStatus)
+print('ipStatus-', ipStatus)
 
 
 # шлем статус сработки детектора на контроллер , концентратор. раз в 400 мс.
@@ -376,12 +419,14 @@ print ('ipStatus-', ipStatus)
 settings = read_setts_from_syst(path + "settings.dat")
 polygones = read_polygones_from_file(path + "polygones.dat")
 
-frame = np.zeros((512,512,3), np.uint8) # пустая картинка при старте
+frame = np.zeros((512, 512, 3), np.uint8)  # пустая картинка при старте
 font = cv2.FONT_HERSHEY_SIMPLEX
-cv2.putText(frame,'wait...',(180,250), font, 2,(255,255,255), 2, cv2.LINE_AA)
+cv2.putText(frame, 'wait...', (180, 250), font,
+            2, (255, 255, 255), 2, cv2.LINE_AA)
 
 main_proc = Process(target=main_process)
 main_proc.start()
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=8080, debug=False,
+            threaded=True, use_reloader=False)
