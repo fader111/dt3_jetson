@@ -134,7 +134,7 @@ iou_tresh = 0.2
 camera_str = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
 		height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv flip-method=2 ! \
         video/x-raw, width=(int)1280, height=(int)720, format=(string)BGRx ! \
-        videoconvert ! video/x-raw, format=(string)BGR ! appsink"
+        videoconvert ! video/x-raw, format=(string)BGR ! appsink wait-on-eos=false max-buffers=1 drop=True"
 
 # not used,  just sample
 camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
