@@ -116,6 +116,8 @@ def video_feed():
     return Response(gen(Camera()),  # этот жрет больше ресурсов
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
+def gen_video(camera):
+    pass
 
 # вызывается при старте и при изменении настроек IP в форме - устанавливает в linux новые
 

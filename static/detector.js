@@ -949,6 +949,7 @@ window.onload = function () {
 
     function pushSettings() {
         //if editMode, swith it off, calling editButtonOnclick function
+        console.log("pushSettings")
         if (editMode == 1) editButtonOnclick();
         // req = convertPolyToString(polygones, W, H, modes_poly, ramkiArrows); // modes_poly здесь это r.set
         // sendPolyToServer(req);

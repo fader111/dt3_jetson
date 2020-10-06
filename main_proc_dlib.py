@@ -107,7 +107,8 @@ if 'win' in sys.platform:
 else:
     video_src = "/home/a/Videos/U524802_1_695_0_new.avi"  # 2650 x 2048
     video_src = "/home/a/Videos/U524806_3.avi"  # 2650 x 2048
-    
+
+video_src = '/home/a/filename.mp4'   
 # video_src = '/home/a/Videos/lenin35_640.avi' # h 640
 # video_src = "/home/a/dt3_jetson/jam_video_dinamo.avi" gets some distorted video IDKW
 # video_src = "http://95.215.176.83:10090/video30.mjpg?resolution=&fps="
@@ -134,13 +135,17 @@ iou_tresh = 0.2
 camera_str = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
 		height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv flip-method=2 ! \
         video/x-raw, width=(int)1280, height=(int)720, format=(string)BGRx ! \
-        videoconvert ! video/x-raw, format=(string)BGR ! appsink"
+        videoconvert ! video/x-raw, format=(string)BGR ! appsink wait-on-eos=false max-buffers=1 drop=True"
 
 # not used,  just sample
 camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
 		height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv flip-method=2 ! \
         video/x-raw, format=(string)BGRx ! \
         videoconvert ! video/x-raw, format=(string)BGR ! appsink"
+
+camera_str_h256 = f"nvarguscamerasrc ! 'video/x-raw(memory:NVMM), width={str(width)}, \
+                    height={str(height)},format=NV12, framerate=60/1' ! nvvidconv flip-method=2 ! \
+                    omxh265enc ! qtmux ! appsink wait-on-eos=false max-buffers=1 drop=True"
 
 poligones_filepath = proj_path + 'polygones.dat'
 settings_filepath = proj_path + 'settings.dat'
@@ -387,7 +392,7 @@ def proc():
         orig_img = img
         while not ret:
             ret, img = cap.read()
-            print('wait..')
+            # print('wait..')
         img = cv2.resize(img, (proc_width, proc_height))
         # img = cv2.resize(img, (800, 604))
         height, width = img.shape[:2]

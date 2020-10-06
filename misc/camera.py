@@ -19,8 +19,8 @@ height = 300
 
 class Camera(object):
     # video = cv2.VideoCapture("http://otts1.ottv.biz/iptv/R54WXML82FGLXF/519/index.m3u8?tcp")
-    video = cv2.VideoCapture(1)
-    obj_cntr =0
+    video = cv2.VideoCapture(0)
+    obj_cntr = 0
 
     def __init__(self):
         # Using OpenCV to capture from device 0(1). If you have trouble capturing
@@ -38,11 +38,11 @@ class Camera(object):
         # If you decide to use video.mp4, you must have this file in the folder
         # as the main.py.
         # self.video = cv2.VideoCapture('video.mp4')
-        self.__class__.obj_cntr +=1
+        self.__class__.obj_cntr += 1
         print('camera Win obj num= ', Camera.obj_cntr)
 
     def __del__(self):
-        self.__class__.obj_cntr -=1
+        self.__class__.obj_cntr -= 1
 
     # @classmethod
     def __get_frame(self):
@@ -73,3 +73,7 @@ class Camera(object):
         ret = cv2.resize(ret, (width, height)) # эту ерунду можно не делать и настроить размер кадра при захвате или считывании, надо выяснить
         # print ('cls.video POSLE',cls.video)
         return ret
+
+if __name__ == '__main__':      # test purposes
+    video_writer = cv2.VideoWriter("sample_video_stream", fourcc=cv2.VideoWriter.fourcc('H', 'E', 'V', 'C'), fps=30, frameSize=(width, height))
+    print(video_writer.isOpened())

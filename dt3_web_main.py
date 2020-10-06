@@ -2,7 +2,14 @@
 ''' Transport Detector Type2 with web interface '''
 
 import cProfile
-import sys, os, time, cv2, socket
+import os
+from pathlib import Path
+import socket
+import subprocess
+import sys
+import time
+
+import cv2
 from flask import Flask, session, render_template, Response, request, json, jsonify, make_response
 from flask_httpauth import HTTPBasicAuth
 from multiprocessing.dummy import Process, Queue
@@ -84,19 +91,49 @@ def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
     return Response(gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-
 def gen():
     """Video streaming generator function."""
     global frame
+
+    dir_to_save_frames = Path('/tmp/frames')
+    dir_to_save_frames.mkdir(exist_ok=True)
+    frames_in_video = 60
+    frame_no = 0
+    frame_filename_template = 'frame%d.jpg'
     while True:
-        # print('q_pict.qsize()', q_pict.qsize())
+        frame_no += 1
         if not q_pict.empty():
             frame = q_pict.get()
         frame_ = cv2.imencode('.jpg', frame)[1].tostring()
+
+        frame_filename = dir_to_save_frames / (frame_filename_template % frame_no)
+        with open(frame_filename, 'wb') as frame_file:
+            frame_file.write(frame_)
+
+        if not (frames_in_video - frame_no):
+            convert_images_to_video(dir_to_save_frames, frame_filename_template)
+            clear_dir(dir_to_save_frames)
+            frame_no = 0
+
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_ + b'\r\n')
-        # time.sleep(0.1)
 
+def clear_dir(dir_: Path):
+    for subpath in dir_.iterdir():
+        if subpath.is_dir():
+            clear_dir(subpath)
+        else:
+            subpath.unlink()
+
+def convert_images_to_video(dir_of_frames: Path, frame_filename_template: typing.Text):
+    hls_dir = Path('/tmp/hls/video')
+    hls_dir.mkdir(parents=True, exist_ok=True)
+    pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index=1 caps=\"image/jpeg,framerate=25/1\" !" \
+                " jpegdec ! videoconvert ! videorate ! omxh265enc ! h265parse ! mpegtsmux ! " \
+                " hlssink location=/tmp/hls/video/file%d.mp4 max-files=2 playlist-location=/tmp/hls/video/playlist.m3u8 target-duration=1"
+    
+    # to another thread
+    compl_process = subprocess.run(pipeline, shell=True)
 
 @app.route('/sendSettingsToServer', methods=['GET', 'POST'])
 def sendSettingsToServer():

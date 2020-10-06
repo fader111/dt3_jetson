@@ -1,3 +1,6 @@
+import os
+import typing
+
 def file_edit(fname, field, new_value='192.168.0.16/24'):
     """ edit conf file changes, mask """
     if (type(fname)     is not str) | \
@@ -51,6 +54,14 @@ def file_edit_jetson(fname, ip, gate):
         print ('conf writing faile')
         return False
 
+def check_file_opened(fname: typing.Text):
+    try:
+        os.rename(fname, fname)
+    except OSError:
+        return True
+    else:
+        return False
+
 def file_edit_jetson_network_interfaces(fname, ip, mask, gate):
     """ edit file /etc/network/interfaces """
     # due to switch off network manager 
@@ -66,6 +77,11 @@ def file_edit_jetson_network_interfaces(fname, ip, mask, gate):
         (type(gate)     is not str ):
         print ('file_edit Bad params!')
         return False
+
+    if check_file_opened(fname):
+        print("we ended up on file_opened!")
+        return False
+
     try:
         with open(fname, 'r') as f:
             file = f.read()
@@ -85,12 +101,10 @@ def file_edit_jetson_network_interfaces(fname, ip, mask, gate):
         # print('st2')
     
     try:
-        out = ''
-        for _str in strs:
-            out+=_str+'\n'
+        out = '\n'.join(strs)
         with open(fname, 'w') as f:
             f.write(out)
         return True
     except:
-        print ('conf writing faile')
+        print ('conf writing failure')
         return False
