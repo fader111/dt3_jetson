@@ -12,7 +12,7 @@ from threading import Timer, Thread
 import time
 
 import cv2
-from flask import Flask, session, render_template, Response, request, json, jsonify, make_response
+from flask import Flask, session, render_template, Response, request, json, jsonify, make_response, send_from_directory
 from flask_httpauth import HTTPBasicAuth
 import requests
 
@@ -93,13 +93,14 @@ def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
     return Response(gen_new(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+dir_to_save_video = Path('/tmp/hls/video/')
+dir_to_save_video.mkdir(parents=True, exist_ok=True)
+
 def gen_new():
     global frame        # why?
 
     dir_to_save_frames = Path('/tmp/frames/')
     dir_to_save_frames.mkdir(exist_ok=True)
-    dir_to_save_video = Path('/home/a/sources_new/flask-hls-demo/video/')
-    dir_to_save_video.mkdir(parents=True, exist_ok=True)
     frame_filename_template = 'frame%d.jpg'
     playlist_filename = 'playlist.m3u8'
     video_file_num = 0
@@ -134,10 +135,13 @@ def gen_new():
 def convert_frames_to_video_pipeline(dir_of_frames: Path, video_files_location: Path, frame_filename_template: typing.Text, video_file_num: int):
     filename = f"file{video_file_num}.mp4"
     frames_per_sec = 60
-    pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index=1 caps=\"image/jpeg,framerate={frames_per_sec}/1\" !" \
-                " jpegdec ! videoconvert ! videorate ! omxh265enc ! h265parse ! mpegtsmux ! " \
+    omxh264_pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index=1 caps=\"image/jpeg,framerate={frames_per_sec}/1\" !" \
+                " jpegdec ! videoconvert ! videorate ! omxh264enc ! h264parse ! mpegtsmux ! " \
                 f" filesink location={video_files_location / filename}"     # o-sync=true
-    compl_process = subprocess.run(pipeline, shell=True)
+    mpeg2enc_pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index=1 caps=\"image/jpeg,framerate={frames_per_sec}/1\" !" \
+                " jpegdec ! videoconvert ! videorate ! mpeg2enc ! " \
+                f" filesink location={video_files_location / filename}"
+    compl_process = subprocess.run(omxh264_pipeline, shell=True)
 
     return filename
 
@@ -159,6 +163,12 @@ def update_playlist(filename: typing.Text, video_dir: Path, videofiles_names: ty
 
     with open(video_dir / filename, 'w') as playlist_file:
         playlist_file.write('\n'.join(file_lines))
+
+
+@app.route('/video/<string:filename>')
+def get_stream_part(filename):
+    return send_from_directory(directory=dir_to_save_video, filename=filename)
+
 
 def gen():
     """Video streaming generator function."""
