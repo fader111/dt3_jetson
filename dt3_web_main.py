@@ -91,10 +91,23 @@ def index():
 @app.route('/video_feed')
 def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
-    return Response(gen_new(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-dir_to_save_video = Path('/tmp/hls/video/')
-dir_to_save_video.mkdir(parents=True, exist_ok=True)
+# dir_to_save_video = Path('/tmp/hls/video/')
+# dir_to_save_video.mkdir(parents=True, exist_ok=True)
+
+@app.after_request
+def add_header(r):
+    """
+    Add headers to both force latest IE rendering engine or Chrome Frame,
+    and also to cache the rendered page for 10 minutes.
+    """
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    r.headers["Pragma"] = "no-cache"
+    r.headers["Expires"] = "0"
+    r.headers['Cache-Control'] = 'public, max-age=0'
+    return r
+
 
 def gen_new():
     global frame        # why?
@@ -193,7 +206,6 @@ def gen():
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_ + b'\r\n')
 
-# not used
 def clear_dir(dir_: Path):
     for subpath in dir_.iterdir():
         if subpath.is_dir():

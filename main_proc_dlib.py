@@ -7,6 +7,10 @@ from multiprocessing.dummy import Process, Queue
 # from multiprocessing import Process, Queue
 import time
 import sys
+from pathlib import Path
+import re
+import subprocess
+import typing
 import os
 import math
 import cv2
@@ -240,6 +244,122 @@ def init_status60_15_struct(n_ramki):
 def bbox_square(bbox):
     return abs((bbox[0]-bbox[2])*(bbox[1]-bbox[3]))
 
+dir_to_save_video = Path('/tmp/hls/video/')
+
+def start_hls_streaming():
+    dir_to_save_video.mkdir(parents=True, exist_ok=True)
+    clear_dir(dir_to_save_video)
+    capture_thread = Thread(target=capture_frames_to_hls, kwargs={'dir_to_save_video': dir_to_save_video})
+    capture_thread.start()
+
+def capture_frames_to_hls(dir_to_save_video):
+    # global frame
+
+    dir_to_save_frames = Path('/tmp/frames/')
+    dir_to_save_frames.mkdir(exist_ok=True)
+    frame_filename_template = 'frame%d.jpg'
+    re_filename_template = r'frame([-+]?\d+).jpg'
+    playlist_filename = 'playlist.m3u8'
+    video_file_num = 0
+    videofiles_names = []
+    nframes_to_convert_into_video = 125
+    num_of_files_in_playlist = 5
+    frame_no = 0
+    while True:
+        if not q_pict.empty():
+            frame = q_pict.get()
+        else:
+            continue
+        # print("Capturing frame")
+        frame_no += 1
+        frame_ = cv2.imencode('.jpg', frame)[1].tostring()
+
+        frame_filename = dir_to_save_frames / (frame_filename_template % frame_no)
+        with open(frame_filename, 'wb') as frame_file:
+            frame_file.write(frame_)
+
+        if not (frame_no % nframes_to_convert_into_video):
+            video_file_num += 1
+            frame_files = filter(lambda x: x.is_file(), dir_to_save_frames.glob('**/*'))
+            frame_files = map(lambda x: x.name, frame_files)
+            frame_numbers = map(lambda frame: re.match(re_filename_template, str(frame)).group(1), frame_files)
+            frame_numbers = map(int, frame_numbers)
+            start_frame_index = min(frame_numbers)
+            convert_thread = Thread(target=convert_frames_to_video, kwargs={
+                'dir_to_save_frames': dir_to_save_frames,
+                'start_frame_index': start_frame_index,
+                'dir_to_save_video': dir_to_save_video,
+                'frame_filename_template': frame_filename_template,
+                'video_file_num': video_file_num,
+                'videofiles_names': videofiles_names,
+                'num_of_files_in_playlist': num_of_files_in_playlist,
+                'playlist_filename': playlist_filename
+            })
+            convert_thread.start()
+
+def convert_frames_to_video(dir_to_save_frames, start_frame_index, dir_to_save_video, frame_filename_template, video_file_num, videofiles_names, num_of_files_in_playlist, playlist_filename):
+    
+    # print(f"Start filename index: {start_frame_index}", f"Smallest filename found: {smallest_filename}")
+    print("Videofiles_names:", videofiles_names)
+    new_video_filename = convert_frames_to_video_pipeline(dir_to_save_frames, start_frame_index, dir_to_save_video, frame_filename_template, video_file_num)
+    clear_dir(dir_to_save_frames)
+    videofiles_names.append(new_video_filename)
+    print(f"New video file: {new_video_filename}")
+    if len(videofiles_names) > num_of_files_in_playlist + 5:
+        videofile_to_remove = dir_to_save_video / videofiles_names[0]
+        videofile_to_remove.unlink()
+        del videofiles_names[0]
+    update_playlist(playlist_filename, dir_to_save_video, videofiles_names[-num_of_files_in_playlist:], video_file_num)
+
+    
+
+def convert_frames_to_video_pipeline(dir_of_frames: Path, start_frame_index: int, video_files_location: Path, frame_filename_template: typing.Text, video_file_num: int):
+    filename = f"file{video_file_num}.mp4"
+    frames_per_sec = 25
+    muxer = 'mpegtsmux'
+    #muxer = 'mp4mux'
+
+    omxh264_pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index={start_frame_index} caps=\"image/jpeg,framerate={frames_per_sec}/1\" !" \
+                " jpegdec ! videoconvert ! videorate ! " \
+                " omxh264enc profile=\"high\" ! " \
+                f" h264parse ! {muxer} ! " \
+                f" filesink location={video_files_location / filename}"     # o-sync=true
+                # "omxh264enc ! " \
+    mpeg2enc_pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index={start_frame_index} caps=\"image/jpeg,framerate={frames_per_sec}/1\" !" \
+                " jpegdec ! videoconvert ! videorate ! mpeg2enc ! " \
+                f" filesink location={video_files_location / filename}"
+    compl_process = subprocess.run(omxh264_pipeline, shell=True)
+
+    return filename
+
+def update_playlist(filename: typing.Text, video_dir: Path, videofiles_names: typing.List, last_video_file_num: int):
+    ext_x_version = 4
+    videofile_duration = 400.
+    
+    # generate playlist file
+    file_lines = ["#EXTM3U"]
+    file_lines.append(f"#EXT-X-VERSION:{ext_x_version}")
+    # file_lines.append("#EXT-X-ALLOW-CACHE:YES")
+    # file_lines.append("#EXT-X-INDEPENDENT-SEGMENTS")
+    file_lines.append(f'#EXT-X-TARGETDURATION:{float(videofile_duration)}')
+    file_lines.append(f'#EXT-X-MEDIA-SEQUENCE:{last_video_file_num - len(videofiles_names) + 1}')
+    
+
+    for videofile_name in videofiles_names:
+        file_lines.append(f'#EXTINF:{float(videofile_duration)},')
+        file_lines.append(videofile_name)
+    # file_lines.append('#EXT-X-ENDLIST')
+
+    with open(video_dir / filename, 'w') as playlist_file:
+        playlist_file.write('\n'.join(file_lines))
+
+def clear_dir(dir_: Path):
+    for subpath in dir_.iterdir():
+        if subpath.is_dir():
+            clear_dir(subpath)
+        else:
+            subpath.unlink()
+
 def proc():
     # timer to restart detector when main thread crashes
     # wdt_tmr = Timer(30, wdt_func) # отключено на время отладки
@@ -335,6 +455,8 @@ def proc():
 
     init_status60_15_struct(len(ramki_scaled)) # initiates status60 and status15 massives
     # with proper number of detecting zones
+
+    start_hls_streaming()
 
     @setInterval(60) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
     def function():
