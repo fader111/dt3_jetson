@@ -88,144 +88,19 @@ def index():
     return render_template('index.html', ipStatus=ipStatus, settings=settings)
 
 
-@app.route('/video_feed')
-def video_feed():
-    """Video streaming route. Put this in the src attribute of an img tag."""
-    return Response(gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-# dir_to_save_video = Path('/tmp/hls/video/')
-# dir_to_save_video.mkdir(parents=True, exist_ok=True)
-
 @app.after_request
-def add_header(r):
-    """
-    Add headers to both force latest IE rendering engine or Chrome Frame,
-    and also to cache the rendered page for 10 minutes.
-    """
-    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    r.headers["Pragma"] = "no-cache"
-    r.headers["Expires"] = "0"
-    r.headers['Cache-Control'] = 'public, max-age=0'
-    return r
-
-
-def gen_new():
-    global frame        # why?
-
-    dir_to_save_frames = Path('/tmp/frames/')
-    dir_to_save_frames.mkdir(exist_ok=True)
-    frame_filename_template = 'frame%d.jpg'
-    playlist_filename = 'playlist.m3u8'
-    video_file_num = 0
-    videofiles_names = []
-    nframes_to_convert_into_video = 600
-    num_of_files_in_playlist = 5
-    frame_no = 0
-    while True:
-        frame_no += 1
-        if not q_pict.empty():
-            frame = q_pict.get()
-        frame_ = cv2.imencode('.jpg', frame)[1].tostring()
-
-        frame_filename = dir_to_save_frames / (frame_filename_template % frame_no)
-        with open(frame_filename, 'wb') as frame_file:
-            frame_file.write(frame_)
-
-        if not (nframes_to_convert_into_video - frame_no):
-            video_file_num += 1
-            new_video_filename = convert_frames_to_video_pipeline(dir_to_save_frames, dir_to_save_video, frame_filename_template, video_file_num)
-            videofiles_names.append(new_video_filename)
-            if len(videofiles_names) > num_of_files_in_playlist + 5:
-                videofile_to_remove = dir_to_save_video / videofiles_names[0]
-                videofile_to_remove.unlink()
-                videofiles_names = videofiles_names[1:]
-            update_playlist(playlist_filename, dir_to_save_video, videofiles_names[-num_of_files_in_playlist:], video_file_num)
-            clear_dir(dir_to_save_frames)
-            frame_no = 0
-        
-        yield b''
-
-def convert_frames_to_video_pipeline(dir_of_frames: Path, video_files_location: Path, frame_filename_template: typing.Text, video_file_num: int):
-    filename = f"file{video_file_num}.mp4"
-    frames_per_sec = 60
-    omxh264_pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index=1 caps=\"image/jpeg,framerate={frames_per_sec}/1\" !" \
-                " jpegdec ! videoconvert ! videorate ! omxh264enc ! h264parse ! mpegtsmux ! " \
-                f" filesink location={video_files_location / filename}"     # o-sync=true
-    mpeg2enc_pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index=1 caps=\"image/jpeg,framerate={frames_per_sec}/1\" !" \
-                " jpegdec ! videoconvert ! videorate ! mpeg2enc ! " \
-                f" filesink location={video_files_location / filename}"
-    compl_process = subprocess.run(omxh264_pipeline, shell=True)
-
-    return filename
-
-def update_playlist(filename: typing.Text, video_dir: Path, videofiles_names: typing.List, last_video_file_num: int):
-    ext_x_version = 3
-    videofile_duration = 4.
-    
-    # generate playlist file
-    file_lines = ["#EXTM3U"]
-    file_lines.append(f"#EXT-X-VERSION:{ext_x_version}")
-    file_lines.append(f'#EXT-X-TARGETDURATION:{float(videofile_duration)}')
-    file_lines.append(f'#EXT-X-MEDIA-SEQUENCE:{last_video_file_num - len(videofiles_names) + 1}')
-    file_lines.append("#EXT-X-ALLOW-CACHE:NO")
-
-    for videofile_name in videofiles_names:
-        file_lines.append(f'#EXTINF:{float(videofile_duration)},')
-        file_lines.append(videofile_name)
-    file_lines.append('#EXT-X-ENDLIST')
-
-    with open(video_dir / filename, 'w') as playlist_file:
-        playlist_file.write('\n'.join(file_lines))
+def add_header(response):
+    response.headers['X-UA-Compatible'] = 'IE=Edge,chrome=1'
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 @app.route('/video/<string:filename>')
 def get_stream_part(filename):
-    return send_from_directory(directory=dir_to_save_video, filename=filename)
+    return send_from_directory(directory=dir_of_hls_video, filename=filename)
 
-
-def gen():
-    """Video streaming generator function."""
-    global frame
-
-    dir_to_save_frames = Path('/tmp/frames')
-    dir_to_save_frames.mkdir(exist_ok=True)
-    frame_no = 0
-    frame_filename_template = 'frame%d.jpg'
-    pipeline_thread = threading.Thread(target=convert_images_to_video, args=(dir_to_save_frames, frame_filename_template))
-    # pipeline_thread.start()
-    while True:
-        frame_no += 1
-        if not q_pict.empty():
-            frame = q_pict.get()
-        frame_ = cv2.imencode('.jpg', frame)[1].tostring()
-
-        frame_filename = dir_to_save_frames / (frame_filename_template % frame_no)
-        with open(frame_filename, 'wb') as frame_file:
-            frame_file.write(frame_)
-
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_ + b'\r\n')
-
-def clear_dir(dir_: Path):
-    for subpath in dir_.iterdir():
-        if subpath.is_dir():
-            clear_dir(subpath)
-        else:
-            subpath.unlink()
-
-def convert_images_to_video(dir_of_frames: Path, frame_filename_template: typing.Text):
-    hls_dir = Path('/tmp/hls/video')
-    hls_dir.mkdir(parents=True, exist_ok=True)
-    filenum = 0
-    frames_per_sec = 60
-    
-    # TODO redo
-    while True:
-        filenum += 1
-        pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index=1 caps=\"image/jpeg,framerate={frames_per_sec}/1\" !" \
-                " jpegdec ! videoconvert ! videorate ! omxh265enc ! h265parse ! mpegtsmux ! " \
-                f" filesink location=/tmp/hls/video/file{filenum}.mp4 o-sync=true"
-        compl_process = subprocess.run(pipeline, shell=True)
 
 @app.route('/sendSettingsToServer', methods=['GET', 'POST'])
 def sendSettingsToServer():

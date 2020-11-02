@@ -2,12 +2,12 @@
     Build tracks based on dlib tracker which updated by detector using iou algorythm.
     Kalman filtering implemented???
 """
+import pathlib
 from threading import Timer, Thread, Lock
 from multiprocessing.dummy import Process, Queue
 # from multiprocessing import Process, Queue
 import time
 import sys
-from pathlib import Path
 import re
 import subprocess
 import typing
@@ -31,6 +31,10 @@ from pprint import pprint
 from copy import deepcopy
 import requests
 requests.packages.urllib3.disable_warnings()
+
+import gi
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst, GLib
 
 if 'linux' in sys.platform:
     import jetson.inference
@@ -244,121 +248,111 @@ def init_status60_15_struct(n_ramki):
 def bbox_square(bbox):
     return abs((bbox[0]-bbox[2])*(bbox[1]-bbox[3]))
 
-dir_to_save_video = Path('/tmp/hls/video/')
+
+dir_of_hls_video = pathlib.Path('/tmp/hls/video')
 
 def start_hls_streaming():
-    dir_to_save_video.mkdir(parents=True, exist_ok=True)
-    clear_dir(dir_to_save_video)
-    capture_thread = Thread(target=capture_frames_to_hls, kwargs={'dir_to_save_video': dir_to_save_video})
-    capture_thread.start()
-
-def capture_frames_to_hls(dir_to_save_video):
-    # global frame
-
-    dir_to_save_frames = Path('/tmp/frames/')
-    dir_to_save_frames.mkdir(exist_ok=True)
-    frame_filename_template = 'frame%d.jpg'
-    re_filename_template = r'frame([-+]?\d+).jpg'
-    playlist_filename = 'playlist.m3u8'
-    video_file_num = 0
-    videofiles_names = []
-    nframes_to_convert_into_video = 125
-    num_of_files_in_playlist = 5
-    frame_no = 0
-    while True:
-        if not q_pict.empty():
-            frame = q_pict.get()
-        else:
-            continue
-        # print("Capturing frame")
-        frame_no += 1
-        frame_ = cv2.imencode('.jpg', frame)[1].tostring()
-
-        frame_filename = dir_to_save_frames / (frame_filename_template % frame_no)
-        with open(frame_filename, 'wb') as frame_file:
-            frame_file.write(frame_)
-
-        if not (frame_no % nframes_to_convert_into_video):
-            video_file_num += 1
-            frame_files = filter(lambda x: x.is_file(), dir_to_save_frames.glob('**/*'))
-            frame_files = map(lambda x: x.name, frame_files)
-            frame_numbers = map(lambda frame: re.match(re_filename_template, str(frame)).group(1), frame_files)
-            frame_numbers = map(int, frame_numbers)
-            start_frame_index = min(frame_numbers)
-            convert_thread = Thread(target=convert_frames_to_video, kwargs={
-                'dir_to_save_frames': dir_to_save_frames,
-                'start_frame_index': start_frame_index,
-                'dir_to_save_video': dir_to_save_video,
-                'frame_filename_template': frame_filename_template,
-                'video_file_num': video_file_num,
-                'videofiles_names': videofiles_names,
-                'num_of_files_in_playlist': num_of_files_in_playlist,
-                'playlist_filename': playlist_filename
-            })
-            convert_thread.start()
-
-def convert_frames_to_video(dir_to_save_frames, start_frame_index, dir_to_save_video, frame_filename_template, video_file_num, videofiles_names, num_of_files_in_playlist, playlist_filename):
-    
-    # print(f"Start filename index: {start_frame_index}", f"Smallest filename found: {smallest_filename}")
-    print("Videofiles_names:", videofiles_names)
-    new_video_filename = convert_frames_to_video_pipeline(dir_to_save_frames, start_frame_index, dir_to_save_video, frame_filename_template, video_file_num)
-    clear_dir(dir_to_save_frames)
-    videofiles_names.append(new_video_filename)
-    print(f"New video file: {new_video_filename}")
-    if len(videofiles_names) > num_of_files_in_playlist + 5:
-        videofile_to_remove = dir_to_save_video / videofiles_names[0]
-        videofile_to_remove.unlink()
-        del videofiles_names[0]
-    update_playlist(playlist_filename, dir_to_save_video, videofiles_names[-num_of_files_in_playlist:], video_file_num)
-
-    
-
-def convert_frames_to_video_pipeline(dir_of_frames: Path, start_frame_index: int, video_files_location: Path, frame_filename_template: typing.Text, video_file_num: int):
-    filename = f"file{video_file_num}.mp4"
     frames_per_sec = 25
-    muxer = 'mpegtsmux'
-    #muxer = 'mp4mux'
+    video_filename_template = 'file%d.ts'
+    videofiles_num = 5
+    playlist_filename = 'playlist.m3u8'
+    videofiles_duration = 5
+    appsrc_plugin_name = 'appsrc0'
 
-    omxh264_pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index={start_frame_index} caps=\"image/jpeg,framerate={frames_per_sec}/1\" !" \
-                " jpegdec ! videoconvert ! videorate ! " \
-                " omxh264enc profile=\"high\" ! " \
-                f" h264parse ! {muxer} ! " \
-                f" filesink location={video_files_location / filename}"     # o-sync=true
-                # "omxh264enc ! " \
-    mpeg2enc_pipeline = f"gst-launch-1.0 multifilesrc location={dir_of_frames / frame_filename_template} start-index={start_frame_index} caps=\"image/jpeg,framerate={frames_per_sec}/1\" !" \
-                " jpegdec ! videoconvert ! videorate ! mpeg2enc ! " \
-                f" filesink location={video_files_location / filename}"
-    compl_process = subprocess.run(omxh264_pipeline, shell=True)
+    if dir_of_hls_video.exists():
+        clear_dir(dir_of_hls_video)
+    else:
+        dir_of_hls_video.mkdir(parents=True)
 
-    return filename
+    pipeline = construct_pipeline(frames_per_sec = frames_per_sec,
+                                  dir_of_video = dir_of_hls_video,
+                                  video_filename_template = video_filename_template,
+                                  videofiles_num = videofiles_num,
+                                  playlist_filename = playlist_filename,
+                                  videofiles_duration = videofiles_duration,
+                                  appsrc_plugin_name = appsrc_plugin_name
+                                 )
 
-def update_playlist(filename: typing.Text, video_dir: Path, videofiles_names: typing.List, last_video_file_num: int):
-    ext_x_version = 4
-    videofile_duration = 400.
-    
-    # generate playlist file
-    file_lines = ["#EXTM3U"]
-    file_lines.append(f"#EXT-X-VERSION:{ext_x_version}")
-    # file_lines.append("#EXT-X-ALLOW-CACHE:YES")
-    # file_lines.append("#EXT-X-INDEPENDENT-SEGMENTS")
-    file_lines.append(f'#EXT-X-TARGETDURATION:{float(videofile_duration)}')
-    file_lines.append(f'#EXT-X-MEDIA-SEQUENCE:{last_video_file_num - len(videofiles_names) + 1}')
-    
+    loop = GLib.MainLoop.new(None, False)
+    loop_thread = Thread(target=loop.run)
 
-    for videofile_name in videofiles_names:
-        file_lines.append(f'#EXTINF:{float(videofile_duration)},')
-        file_lines.append(videofile_name)
-    # file_lines.append('#EXT-X-ENDLIST')
+    loop_thread.start()
+    try:
+        pipeline.set_state(Gst.State.PLAYING)
+        appsrc = pipeline.get_by_name(appsrc_plugin_name)
 
-    with open(video_dir / filename, 'w') as playlist_file:
-        playlist_file.write('\n'.join(file_lines))
+        pts = 0
+        duration = 10**9 / frames_per_sec
+        while True:
+            array = q_pict.get()
+            gst_buffer = ndarray_to_gst_buffer(array)
+            pts += duration                                 # Increase pts by duration
+            gst_buffer.pts = pts
+            gst_buffer.duration = duration
+            appsrc.emit("push-buffer", gst_buffer)
 
-def clear_dir(dir_: Path):
+        appsrc.emit("end-of-stream")
+    except Exception as e:
+        print("error:", e)
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+    loop.quit()
+    loop_thread.join(timeout=5)
+
+
+def ndarray_to_gst_buffer(array: np.ndarray) -> Gst.Buffer:
+    """Converts numpy array to Gst.Buffer"""
+    return Gst.Buffer.new_wrapped(array.tobytes())
+
+
+def construct_pipeline(frames_per_sec, dir_of_video, video_filename_template, videofiles_num, playlist_filename,
+                       videofiles_duration, appsrc_plugin_name):
+    source_video_format = 'BGR'
+    video_width, video_height = 640, 480
+
+    pipeline = Gst.Pipeline.new(None)
+
+    appsrc = Gst.ElementFactory.make('appsrc', appsrc_plugin_name)
+    appsrc.set_property('is-live', True)
+    appsrc.set_property('caps',
+                        Gst.Caps.from_string("video/x-raw,format=%s,width=%d,height=%d,framerate=%d/1" %
+                                             (source_video_format, video_width, video_height, frames_per_sec))
+                        )
+    appsrc.set_property('format', Gst.Format.TIME)
+    appsrc.set_property("block", True)
+    pipeline.add(appsrc)
+    videoconvert = Gst.ElementFactory.make('videoconvert', None)
+    pipeline.add(videoconvert)
+    omxh264enc = Gst.ElementFactory.make('omxh264enc', None)
+    omxh264enc.set_property('profile', 'high')
+    pipeline.add(omxh264enc)
+    h264parse = Gst.ElementFactory.make('h264parse', None)
+    pipeline.add(h264parse)
+    mpegtsmux = Gst.ElementFactory.make('mpegtsmux', None)
+    pipeline.add(mpegtsmux)
+    hlssink = Gst.ElementFactory.make('hlssink', None)
+    hlssink.set_property('location', str(dir_of_video / video_filename_template))
+    hlssink.set_property('max-files', videofiles_num)
+    hlssink.set_property('playlist-location', str(dir_of_video / playlist_filename))
+    hlssink.set_property('target-duration', videofiles_duration)
+    pipeline.add(hlssink)
+
+    appsrc.link(videoconvert)
+    videoconvert.link(omxh264enc)
+    omxh264enc.link(h264parse)
+    h264parse.link(mpegtsmux)
+    mpegtsmux.link(hlssink)
+
+    return pipeline
+
+
+def clear_dir(dir_: pathlib.Path):
     for subpath in dir_.iterdir():
         if subpath.is_dir():
             clear_dir(subpath)
         else:
             subpath.unlink()
+
 
 def proc():
     # timer to restart detector when main thread crashes
@@ -456,7 +450,8 @@ def proc():
     init_status60_15_struct(len(ramki_scaled)) # initiates status60 and status15 massives
     # with proper number of detecting zones
 
-    start_hls_streaming()
+    hls_streaming_thread = Thread(target=start_hls_streaming)
+    hls_streaming_thread.start()
 
     @setInterval(60) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
     def function():

@@ -15,6 +15,7 @@
     <script type=text/javascript src="{{ url_for('static', filename='jquery.min.js') }}"></script>
     <script type=text/javascript src="{{ url_for('static', filename='bootstrap.min.js') }}"></script>
     <script type=text/javascript src="{{ url_for('static', filename='detector.js') }}"></script>
+    <script src="{{ url_for('static', filename='hls.js') }}"></script>
     <!-- <script type=text/javascript src="{{ url_for('static', filename='transform.js') }}"></script> -->
 </head>
 <body>
@@ -35,7 +36,7 @@
     <div id="img_div" style="float:left; top: 0px; left: 0px; width:800px; height:600px; position: absolute">
       <!--div class="block1"-->
       <!--img id="pict" style="width:100%;height:100%"/-->
-      <img src="{{ url_for('video_feed') }}" style="width:100%;height:100%">
+        <video id="video" style="width:100%;height:100%" autoplay></video>
       <!--<img src="" style="vertical-align: middle; text-align: center;float:top;width:100%;height:100%">-->
       <!--img id ="pict" style="width:100%;height:100%"/-->
     </div>
@@ -194,45 +195,10 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <!-- Or if you want a more recent alpha version -->
 <!-- <script src="https://cdn.jsdelivr.net/npm/hls.js@alpha"></script> -->
-<video id="video" controls></video>
-<script>
-  var video = document.getElementById('video');
-  var videoSrc = '/video/playlist.m3u8';
-  //var videoSrc = 'https://hls-hwhk-test.mildom.jp/live/1621_540p.m3u8';   // test_stream (works 100%)
-  if (Hls.isSupported()) {
-    var config = {
-      debug: true
-    }
-    var hls = new Hls(config);
-    hls.loadSource(videoSrc);
-    hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, function() {
-      video.play();
-    });
-  }
-  // hls.js is not supported on platforms that do not have Media Source
-  // Extensions (MSE) enabled.
-  //
-  // When the browser has built-in HLS support (check using `canPlayType`),
-  // we can provide an HLS manifest (i.e. .m3u8 URL) directly to the video
-  // element through the `src` property. This is using the built-in support
-  // of the plain video element, without using hls.js.
-  //
-  // Note: it would be more normal to wait on the 'canplay' event below however
-  // on Safari (where you are most likely to find built-in HLS support) the
-  // video.src URL must be on the user-driven white-list before a 'canplay'
-  // event will be emitted; the last video event that can be reliably
-  // listened-for when the URL is not on the white-list is 'loadedmetadata'.
-  else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = videoSrc;
-    video.addEventListener('loadedmetadata', function() {
-      video.play();
-    });
-  }
-</script>
+
+<script src="{{ url_for('static', filename='hls_player_settings.js') }}"></script>
 
 <!-- video controls preload>
   <source src="/video/playlist.m3u8" type="application/x-mpegURL">
