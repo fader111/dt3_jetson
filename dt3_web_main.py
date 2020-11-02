@@ -8,13 +8,14 @@ from pathlib import Path
 import socket
 import subprocess
 import sys
-from threading import Timer, Thread
+from threading import Timer, Thread, Lock
 import time
 
 import cv2
 from flask import Flask, session, render_template, Response, request, json, jsonify, make_response, send_from_directory
 from flask_httpauth import HTTPBasicAuth
 import requests
+
 
 from main_proc_dlib import *
 from conf_editor import *
@@ -363,6 +364,7 @@ def change_ip_on_jetson(ip, gate, fname='/etc/NetworkManager/system-connections/
     if not winMode:
         file_edit_jetson(fname, ip, gate)
 
+change_ip_lock = Lock()
 
 def change_ip_on_jetson_nw_inf(ip, mask, gate, fname='/etc/network/interfaces'):
     """ CURRENT VERSION 
@@ -370,7 +372,10 @@ def change_ip_on_jetson_nw_inf(ip, mask, gate, fname='/etc/network/interfaces'):
         cahanges ip, mask, gate in file /etc/network/interfaces """
     if not winMode:
         # file_edit_jetson(fname, ip, gate)
-        file_edit_jetson_network_interfaces(fname, ip, mask, gate)
+        if change_ip_lock.locked():
+            return
+        with change_ip_lock:
+            file_edit_jetson_network_interfaces(fname, ip, mask, gate)
 
 
 def set_Default_IP_Settings(def_ip="192.168.0.34/24", def_mask="255.255.255.0", def_gateway="192.168.0.254"):

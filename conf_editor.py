@@ -92,11 +92,11 @@ def file_edit_jetson_network_interfaces(fname, ip, mask, gate):
         strs = file.split('\n')
         for i, _str in enumerate(strs):
             if (addr_val in _str) & (not '#' in _str):
-                strs[i]= addr_val + ip
+                strs[i] = addr_val + ip
             if (mask_val in _str) & (not '#' in _str):
-                strs[i]= mask_val + mask
+                strs[i] = mask_val + mask
             if (gate_val in _str) & (not '#' in _str):
-                strs[i]= gate_val + gate
+                strs[i] = gate_val + gate
     # except:
         # print('st2')
     
