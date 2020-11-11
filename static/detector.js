@@ -31,10 +31,14 @@ window.onload = function () {
     var zeroPolyAlert = document.getElementById('zeroPolyAlert'); // надпись о том что с сервера нет полигонов.
     var editModeAlert = document.getElementById('editModeAlert'); // индикатор режима Редактирования
     var hubData = document.getElementById('hub_Data'); // статус связи с коммутатором
+    var img_div = document.getElementById('img_div')
+    var compressed_stream = document.getElementById('video')
+    var uncompressed_stream = document.getElementById('mjpeg')
     var polyData = document.getElementById('polyData'); //
     var calibHolder = document.getElementById('holderCalibr');
     var holder = document.getElementById('holder');
     holder.style.visibility = "hidden";
+    uncompressed_stream.remove();
 
     // block of vars of calibration polygon
     var calibPolygone = {};
@@ -768,6 +772,17 @@ window.onload = function () {
     window.onmouseup = function () {
         winOnmouseUp();
     };
+    function stopLoad(frame) {
+        var cw = frame.contentWindow;
+        if (cw.stop) {
+            cw.stop();
+        } else {
+            cw = frame.contentDocument;
+        if (cw.execCommand) {
+            cw.execCommand("Stop", false);
+        }
+    };
+    }
     function debugInfoShow(event) { // при надажии d показывает статус связи с коммутором
         var kep = event.which;
         //if (event.keyCode == shift && capslock)console.log("shiftCapslock");
@@ -790,6 +805,20 @@ window.onload = function () {
                 // чтобы не засорять сеть
                 console.log('crearInterval', intID);
                 clearInterval(intID);
+            }
+        };
+        if (kep == 82) {        // 'r' key
+            if (compressed_stream.style.visibility == 'visible') {
+                compressed_stream.style.visibility = 'hidden';
+                uncompressed_stream.style.visibility = 'visible';
+                img_div.replaceChild(uncompressed_stream, compressed_stream);
+                console.log("Uncompressed stream shown");
+            }
+            else {
+                compressed_stream.style.visibility = 'visible';
+                uncompressed_stream.style.visibility = 'hidden';
+                img_div.replaceChild(compressed_stream, uncompressed_stream);
+                console.log("Compressed stream shown");
             }
         };
     };

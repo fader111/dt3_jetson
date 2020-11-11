@@ -97,11 +97,24 @@ def add_header(response):
     response.headers['Expires'] = '0'
     return response
 
+@app.route('/video_feed')
+def video_feed():
+    """Video streaming route. Put this in the src attribute of an img tag."""
+    return Response(gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+def gen():
+    """Video streaming generator function."""
+    global frame
+    while True:
+        frame = q_pict.get()
+        frame_ = cv2.imencode('.jpg', frame)[1].tostring()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_ + b'\r\n')
 
 @app.route('/video/<string:filename>')
 def get_stream_part(filename):
     return send_from_directory(directory=dir_of_hls_video, filename=filename)
-
 
 @app.route('/sendSettingsToServer', methods=['GET', 'POST'])
 def sendSettingsToServer():

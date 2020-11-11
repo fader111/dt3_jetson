@@ -159,7 +159,7 @@ camera_str_h256 = f"nvarguscamerasrc ! 'video/x-raw(memory:NVMM), width={str(wid
 ufanet_token = '007e291368194ef1a59519d128ea5861'
 #http://136.169.226.9/001-999-037/tracks-v1/mono.m3u8?token=5ebf46533fe74d26938db36e87038bf8
 camera_str_ufanet = f"souphttpsrc location=http://136.169.226.9/001-999-037/tracks-v1/mono.m3u8?token={ufanet_token} ! " \
-                f"hlsdemux ! omxh264dec ! videoconve" \
+                f"hlsdemux ! omxh264dec ! videoconvert " \
                 f"appsink wait-on-eos=false max-buffers=1 drop=True "
 
 poligones_filepath = proj_path + 'polygones.dat'
