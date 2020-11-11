@@ -2,16 +2,9 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="715e8f66-0395-401d-bb44-76120e319c41" name="Default" comment="">
-      <change afterPath="$PROJECT_DIR$/static/hls.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/static/hls_player_settings.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/pedestrian.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/pedestrian.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dt3_web_main.py" beforeDir="false" afterPath="$PROJECT_DIR$/dt3_web_main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main_proc_dlib.py" beforeDir="false" afterPath="$PROJECT_DIR$/main_proc_dlib.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/settings.dat" beforeDir="false" afterPath="$PROJECT_DIR$/settings.dat" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/index.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
