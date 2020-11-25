@@ -36,6 +36,7 @@ window.onload = function () {
     var uncompressed_stream = document.getElementById('mjpeg')
     var polyData = document.getElementById('polyData'); //
     var calibHolder = document.getElementById('holderCalibr');
+    var compresstion_mode_header = document.getElementById('compression_mode_header')
     var holder = document.getElementById('holder');
     holder.style.visibility = "hidden";
     uncompressed_stream.remove();
@@ -812,12 +813,14 @@ window.onload = function () {
                 compressed_stream.style.visibility = 'hidden';
                 uncompressed_stream.style.visibility = 'visible';
                 img_div.replaceChild(uncompressed_stream, compressed_stream);
+                compresstion_mode_header.innerHTML = "Режим несжатого потока"
                 console.log("Uncompressed stream shown");
             }
             else {
                 compressed_stream.style.visibility = 'visible';
                 uncompressed_stream.style.visibility = 'hidden';
                 img_div.replaceChild(compressed_stream, uncompressed_stream);
+                compresstion_mode_header.innerHTML = "Режим сжатого потока"
                 console.log("Compressed stream shown");
             }
         };

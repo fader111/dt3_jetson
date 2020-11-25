@@ -78,6 +78,9 @@ def file_edit_jetson_network_interfaces(fname, ip, mask, gate):
         print ('file_edit Bad params!')
         return False
 
+    if not ip.strip() or not mask.strip() or not gate.strip():
+        return False
+
     if check_file_opened(fname):
         print("we ended up on file_opened!")
         return False

@@ -36,6 +36,8 @@ requests.packages.urllib3.disable_warnings()
 import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
+Gst.init()
+
 
 if 'linux' in sys.platform:
     import jetson.inference
@@ -117,7 +119,7 @@ else:
     video_src = "/home/a/Videos/U524802_1_695_0_new.avi"  # 2650 x 2048
     video_src = "/home/a/Videos/U524806_3.avi"  # 2650 x 2048
 
-video_src = '/home/a/filename.mp4'   
+video_src = '/home/a/filename.mp4'
 # video_src = '/home/a/Videos/lenin35_640.avi' # h 640
 # video_src = "/home/a/dt3_jetson/jam_video_dinamo.avi" gets some distorted video IDKW
 # video_src = "http://95.215.176.83:10090/video30.mjpg?resolution=&fps="
@@ -142,7 +144,7 @@ iou_tresh = 0.2
 # only for sci camera
 # framerate=(fraction)60/1 - optimum rate
 camera_str = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
-		height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv flip-method=2 ! \
+		height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv ! \
         video/x-raw, width=(int)1280, height=(int)720, format=(string)BGRx ! \
         videoconvert ! video/x-raw, format=(string)BGR ! appsink wait-on-eos=false max-buffers=1 drop=True"
 
@@ -161,6 +163,9 @@ ufanet_token = '007e291368194ef1a59519d128ea5861'
 camera_str_ufanet = f"souphttpsrc location=http://136.169.226.9/001-999-037/tracks-v1/mono.m3u8?token={ufanet_token} ! " \
                 f"hlsdemux ! omxh264dec ! videoconvert " \
                 f"appsink wait-on-eos=false max-buffers=1 drop=True "
+
+rtsp_location = 'rtsp://192.168.1.10/user=admin_password=tlJwpbo6_channel=1_stream=0.sdp?real_stream'
+rtsp_str = f"rtspsrc location={rtsp_location} ! queue ! rtph264depay ! h264parse ! queue ! omxh264dec ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! appsink wait-on-eos=false max-buffers=1 drop=True"
 
 poligones_filepath = proj_path + 'polygones.dat'
 settings_filepath = proj_path + 'settings.dat'
@@ -258,6 +263,11 @@ def bbox_square(bbox):
 
 dir_of_hls_video = pathlib.Path('/tmp/hls/video')
 
+def run_rtsp_media_server():
+    path_of_executable = pathlib.Path('/home/a/sources/RtspRestreamServer/build/RestreamServerApp/RestreamServerApp')
+    subprocess.Popen(str(path_of_executable), shell=True)
+
+
 def start_hls_streaming():
     frames_per_sec = 25
     video_filename_template = 'file%d.ts'
@@ -265,6 +275,8 @@ def start_hls_streaming():
     playlist_filename = 'playlist.m3u8'
     videofiles_duration = 5
     appsrc_plugin_name = 'appsrc0'
+
+    run_rtsp_media_server()
 
     if dir_of_hls_video.exists():
         clear_dir(dir_of_hls_video)
@@ -333,6 +345,14 @@ def construct_pipeline(frames_per_sec, dir_of_video, video_filename_template, vi
     omxh264enc = Gst.ElementFactory.make('omxh264enc', None)
     omxh264enc.set_property('profile', 'high')
     pipeline.add(omxh264enc)
+    tee = Gst.ElementFactory.make('tee', None)
+    pad_template = tee.get_pad_template('src_%u')
+    tee_hls_pad = tee.request_pad(pad_template, None, None)
+    tee_rtsp_pad = tee.request_pad(pad_template, None, None)
+    pipeline.add(tee)
+    queue_hls = Gst.ElementFactory.make('queue', 'queue_hls')
+    queue_hls_pad = queue_hls.get_static_pad("sink")
+    pipeline.add(queue_hls)
     h264parse = Gst.ElementFactory.make('h264parse', None)
     pipeline.add(h264parse)
     mpegtsmux = Gst.ElementFactory.make('mpegtsmux', None)
@@ -343,12 +363,22 @@ def construct_pipeline(frames_per_sec, dir_of_video, video_filename_template, vi
     hlssink.set_property('playlist-location', str(dir_of_video / playlist_filename))
     hlssink.set_property('target-duration', videofiles_duration)
     pipeline.add(hlssink)
+    queue_rtsp = Gst.ElementFactory.make('queue', 'queue_rtsp')
+    queue_rtsp_pad = queue_rtsp.get_static_pad("sink")
+    pipeline.add(queue_rtsp)
+    rtspclientsink = Gst.ElementFactory.make('rtspclientsink', None)
+    rtspclientsink.set_property('location', 'rtsp://localhost:8001/test?record')
+    pipeline.add(rtspclientsink)
 
     appsrc.link(videoconvert)
     videoconvert.link(omxh264enc)
-    omxh264enc.link(h264parse)
+    omxh264enc.link(tee)
+    tee_hls_pad.link(queue_hls_pad)
+    queue_hls.link(h264parse)
     h264parse.link(mpegtsmux)
     mpegtsmux.link(hlssink)
+    tee_rtsp_pad.link(queue_rtsp_pad)
+    queue_rtsp.link(rtspclientsink)
 
     return pipeline
 
@@ -457,9 +487,6 @@ def proc():
     init_status60_15_struct(len(ramki_scaled)) # initiates status60 and status15 massives
     # with proper number of detecting zones
 
-    hls_streaming_thread = Thread(target=start_hls_streaming)
-    hls_streaming_thread.start()
-
     @setInterval(60) # each {arg} seconds runs  ramka.sliding_wind for update zone status 
     def function():
         ''' calculates detector status60 and status15 '''
@@ -488,6 +515,9 @@ def proc():
     # start new thread for average speed calculating
     stop = function() # stop is threading.Event object
 
+    hls_streaming_thread = Thread(target=start_hls_streaming)
+    hls_streaming_thread.start()
+
     while True:
         # if memmon:
         # snapshot = tracemalloc.take_snapshot()
@@ -512,7 +542,6 @@ def proc():
             else:
                 cap = cv2.VideoCapture(video_src)
             ret, img = cap.read()
-
         orig_img = img
         while not ret:
             ret, img = cap.read()
@@ -585,9 +614,9 @@ def proc():
                     continue
                 # print(f'bbox_square {bbox_square(bbox)}')
 
-                if detection.ClassID in CLASSES:
+                if detection.ClassID in CLASSES_EXTENDED:
                     # conf = round(detection.Confidence,2)
-                    class_string = f'{CLASSES[detection.ClassID]} - {detection.Confidence:.2f}'
+                    class_string = f'{CLASSES_EXTENDED[detection.ClassID]} - {detection.Confidence:.2f}'
                 else:
                     class_string = ('wtf?')
                     continue  # go
@@ -967,6 +996,7 @@ def proc():
         #         print(stat)
 
     cap.release()
+    cap2.release()
     cv2.destroyAllWindows()
 
 

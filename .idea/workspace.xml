@@ -1,10 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="BranchesTreeState">
+    <expand>
+      <path>
+        <item name="ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="LOCAL_ROOT" type="e8cecc67:BranchNodeDescriptor" />
+      </path>
+      <path>
+        <item name="ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="REMOTE_ROOT" type="e8cecc67:BranchNodeDescriptor" />
+      </path>
+      <path>
+        <item name="ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="REMOTE_ROOT" type="e8cecc67:BranchNodeDescriptor" />
+        <item name="GROUP_NODE:origin" type="e8cecc67:BranchNodeDescriptor" />
+      </path>
+    </expand>
+    <select />
+  </component>
   <component name="ChangeListManager">
     <list default="true" id="715e8f66-0395-401d-bb44-76120e319c41" name="Default" comment="">
+      <change afterPath="$PROJECT_DIR$/test_pipeline.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dt3_web_main.py" beforeDir="false" afterPath="$PROJECT_DIR$/dt3_web_main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/conf_editor.py" beforeDir="false" afterPath="$PROJECT_DIR$/conf_editor.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main_proc_dlib.py" beforeDir="false" afterPath="$PROJECT_DIR$/main_proc_dlib.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/polygones.dat" beforeDir="false" afterPath="$PROJECT_DIR$/polygones.dat" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/settings.dat" beforeDir="false" afterPath="$PROJECT_DIR$/settings.dat" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/static/detector.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/detector.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/templates/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/index.html" afterDir="false" />
     </list>
@@ -42,7 +63,7 @@
     <detection-done>true</detection-done>
     <sorting>DEFINITION_ORDER</sorting>
   </component>
-  <component name="ProjectId" id="1jSaNNJOXNZlduTpo8P3plSkmkX" />
+  <component name="ProjectId" id="1kSIXnvCHVKtF7PylpyTjxZIVwC" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true">
     <ConfirmationsSetting value="2" id="Add" />
   </component>
@@ -54,10 +75,8 @@
     <property name="DefaultHtmlFileTemplate" value="HTML File" />
     <property name="HbShouldOpenHtmlAsHb" value="" />
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
-    <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
-    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
@@ -206,41 +225,9 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="WindowStateProjectService">
-    <state x="743" y="278" key="FileChooserDialogImpl" timestamp="1603805487278">
-      <screen x="0" y="0" width="1920" height="1044" />
+    <state x="656" y="257" width="672" height="678" key="search.everywhere.popup" timestamp="1606220611200">
+      <screen x="67" y="27" width="1853" height="1053" />
     </state>
-    <state x="743" y="278" key="FileChooserDialogImpl/0.0.1920.1044@0.0.1920.1044" timestamp="1603805487278" />
-    <state width="1897" height="99" key="GridCell.Tab.0.bottom" timestamp="1604066733714">
-      <screen x="0" y="0" width="1920" height="1044" />
-    </state>
-    <state width="1897" height="99" key="GridCell.Tab.0.bottom/0.0.1920.1044@0.0.1920.1044" timestamp="1604066733714" />
-    <state width="1897" height="99" key="GridCell.Tab.0.center" timestamp="1604066733713">
-      <screen x="0" y="0" width="1920" height="1044" />
-    </state>
-    <state width="1897" height="99" key="GridCell.Tab.0.center/0.0.1920.1044@0.0.1920.1044" timestamp="1604066733713" />
-    <state width="1897" height="99" key="GridCell.Tab.0.left" timestamp="1604066733713">
-      <screen x="0" y="0" width="1920" height="1044" />
-    </state>
-    <state width="1897" height="99" key="GridCell.Tab.0.left/0.0.1920.1044@0.0.1920.1044" timestamp="1604066733713" />
-    <state width="1897" height="99" key="GridCell.Tab.0.right" timestamp="1604066733714">
-      <screen x="0" y="0" width="1920" height="1044" />
-    </state>
-    <state width="1897" height="99" key="GridCell.Tab.0.right/0.0.1920.1044@0.0.1920.1044" timestamp="1604066733714" />
-    <state x="544" y="266" key="IDE.errors.dialog" timestamp="1603980140555">
-      <screen x="0" y="0" width="1920" height="1044" />
-    </state>
-    <state x="544" y="266" key="IDE.errors.dialog/0.0.1920.1044@0.0.1920.1044" timestamp="1603980140555" />
-    <state x="457" y="155" key="SettingsEditor" timestamp="1603805371936">
-      <screen x="0" y="0" width="1920" height="1044" />
-    </state>
-    <state x="457" y="155" key="SettingsEditor/0.0.1920.1044@0.0.1920.1044" timestamp="1603805371936" />
-    <state width="498" height="446" key="SwitcherDM" timestamp="1603800472499">
-      <screen x="0" y="0" width="1920" height="1044" />
-    </state>
-    <state width="498" height="446" key="SwitcherDM/0.0.1920.1044@0.0.1920.1044" timestamp="1603800472499" />
-    <state x="663" y="130" width="594" height="783" key="find.popup" timestamp="1604071469802">
-      <screen x="0" y="0" width="1920" height="1044" />
-    </state>
-    <state x="663" y="130" width="594" height="783" key="find.popup/0.0.1920.1044@0.0.1920.1044" timestamp="1604071469802" />
+    <state x="656" y="257" width="672" height="678" key="search.everywhere.popup/67.27.1853.1053@67.27.1853.1053" timestamp="1606220611200" />
   </component>
 </project>
