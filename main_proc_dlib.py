@@ -3,6 +3,7 @@
     Kalman filtering implemented???
 """
 import pathlib
+import telnetlib
 
 from threading import Timer, Thread, Lock
 from multiprocessing.dummy import Process, Queue
@@ -164,7 +165,7 @@ camera_str_ufanet = f"souphttpsrc location=http://136.169.226.9/001-999-037/trac
                 f"hlsdemux ! omxh264dec ! videoconvert " \
                 f"appsink wait-on-eos=false max-buffers=1 drop=True "
 
-rtsp_location = 'rtsp://192.168.1.10/user=admin_password=tlJwpbo6_channel=1_stream=0.sdp?real_stream'
+rtsp_location = 'rtsp://172.16.20.97/user=admin_password=tlJwpbo6_channel=1_stream=0.sdp?real_stream'
 rtsp_str = f"rtspsrc location={rtsp_location} ! queue ! rtph264depay ! h264parse ! queue ! omxh264dec ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! appsink wait-on-eos=false max-buffers=1 drop=True"
 
 poligones_filepath = proj_path + 'polygones.dat'
@@ -262,6 +263,25 @@ def bbox_square(bbox):
 
 
 dir_of_hls_video = pathlib.Path('/tmp/hls/video')
+
+def reboot_local_rtsp_camera():
+    DEFAULT_IP = '172.16.20.97'
+    USERNAME = 'root'
+    PASSWORD = 'xmhdipc'
+
+    tn = telnetlib.Telnet(DEFAULT_IP)
+    tn.read_until(b"login: ")
+    tn.write(USERNAME.encode('ascii') + b"\n")
+    tn.read_until(b"Password: ")
+    tn.write(PASSWORD.encode('ascii') + b"\n")
+    tn.write(b"reboot\n")
+    tn.read_all()
+
+def local_rtsp_camera_reboot_thread():
+    reboot_timeout = 24*60*60       # secs, 24 hours
+    while True:
+        time.sleep(reboot_timeout)
+        reboot_local_rtsp_camera()
 
 def run_rtsp_media_server():
     path_of_executable = pathlib.Path('/home/a/sources/RtspRestreamServer/build/RestreamServerApp/RestreamServerApp')
@@ -517,6 +537,9 @@ def proc():
 
     hls_streaming_thread = Thread(target=start_hls_streaming)
     hls_streaming_thread.start()
+
+    reboot_camera_thread = Thread(target=local_rtsp_camera_reboot_thread)
+    reboot_camera_thread.start()
 
     while True:
         # if memmon:
