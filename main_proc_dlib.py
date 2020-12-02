@@ -2,6 +2,7 @@
     Build tracks based on dlib tracker which updated by detector using iou algorythm.
     Kalman filtering implemented???
 """
+import multiprocessing as mp
 import pathlib
 import telnetlib
 
@@ -54,6 +55,7 @@ q_settings = Queue(maxsize=5)
 q_ramki = Queue(maxsize=5)      # polygones paths
 q_status60 = Queue(maxsize=5)     # current status60 of process for web.
 q_status15 = Queue(maxsize=5)     # current status15 of process for web.
+pedestrian_detector_status = mp.Value('b', False)
 
 # jetson inference networks list
 network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
@@ -620,7 +622,8 @@ def proc():
 #            frame = jetson.utils.cudaToNumpy(frame_cuda, width, height, 4)
             # tss = time.time() # 8-14 w/o/ stdout on video
 #            frame = cv2.cvtColor(frame.astype(np.uint8), cv2.COLOR_RGBA2RGB)
-
+            detections = list(filter(lambda detection: detection.ClassID == 1, detections))       # only person detections
+            pedestrian_detector_status.value = bool(detections)
             for detection in detections:
                 # print('  class', detection.Area, detection.ClassID)
                 # print('detection', detection)
@@ -690,9 +693,9 @@ def proc():
                     track.update(frame)
                     x1, y1, x2, y2 = track.boxes[-1]
 
-                    if track.class_id in CLASSES:
+                    if track.class_id in CLASSES_EXTENDED:
                         # conf = round(detection.Confidence,2)
-                        class_string = f'{CLASSES[track.class_id]} - {track.confidence:.2f}'
+                        class_string = f'{CLASSES_EXTENDED[track.class_id]} - {track.confidence:.2f}'
                     else:
                         class_string = ('wtf?')
 

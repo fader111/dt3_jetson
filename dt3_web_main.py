@@ -308,6 +308,10 @@ def sendCalibrationToServer():
         polygon points to the python'''
     pass
 
+@app.route('/pedestrian', methods=['POST'])
+def get_pedestrian_detector_status():
+    return jsonify({'pedestrians_detected': pedestrian_detector_status.value})
+
 
 def updatePoly(poly):
     ''' Updates polygones, during start or when changes come from web client'''
