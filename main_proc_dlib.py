@@ -165,8 +165,13 @@ camera_str_ufanet = f"souphttpsrc location=http://136.169.226.9/001-999-037/trac
                 f"hlsdemux ! omxh264dec ! videoconvert " \
                 f"appsink wait-on-eos=false max-buffers=1 drop=True "
 
-rtsp_location = 'rtsp://172.16.20.97/user=admin_password=tlJwpbo6_channel=1_stream=0.sdp?real_stream'
-rtsp_str = f"rtspsrc location={rtsp_location} ! queue ! rtph264depay ! h264parse ! queue ! omxh264dec ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! appsink wait-on-eos=false max-buffers=1 drop=True"
+rtsp_config_filename = pathlib.Path(proj_path) / pathlib.Path('rtsp.config')
+if rtsp_config_filename.exists():
+    with rtsp_config_filename.open('r') as rtsp_config_file:
+        rtsp_location = rtsp_config_file.read()
+else:
+    rtsp_location = 'rtsp://172.16.20.97/user=admin_password=tlJwpbo6_channel=1_stream=0.sdp?real_stream'
+camera_str = f"rtspsrc location={rtsp_location} ! queue ! rtph264depay ! h264parse ! queue ! omxh264dec ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! appsink wait-on-eos=false max-buffers=1 drop=True"
 
 poligones_filepath = proj_path + 'polygones.dat'
 settings_filepath = proj_path + 'settings.dat'
