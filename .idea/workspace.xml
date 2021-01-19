@@ -20,9 +20,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="715e8f66-0395-401d-bb44-76120e319c41" name="Default" comment="">
-      <change afterPath="$PROJECT_DIR$/test_reboot.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main_proc_dlib.py" beforeDir="false" afterPath="$PROJECT_DIR$/main_proc_dlib.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/rtsp.config" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -70,6 +70,7 @@
     <property name="DefaultHtmlFileTemplate" value="HTML File" />
     <property name="HbShouldOpenHtmlAsHb" value="" />
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
+    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
   </component>
@@ -218,11 +219,5 @@
   </component>
   <component name="VcsContentAnnotationSettings">
     <option name="myLimit" value="2678400000" />
-  </component>
-  <component name="WindowStateProjectService">
-    <state x="656" y="257" width="672" height="678" key="search.everywhere.popup" timestamp="1606220611200">
-      <screen x="67" y="27" width="1853" height="1053" />
-    </state>
-    <state x="656" y="257" width="672" height="678" key="search.everywhere.popup/67.27.1853.1053@67.27.1853.1053" timestamp="1606220611200" />
   </component>
 </project>

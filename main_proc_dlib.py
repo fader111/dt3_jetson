@@ -171,7 +171,7 @@ if rtsp_config_filename.exists():
         rtsp_location = rtsp_config_file.read()
 else:
     rtsp_location = 'rtsp://172.16.20.97/user=admin_password=tlJwpbo6_channel=1_stream=0.sdp?real_stream'
-camera_str = f"rtspsrc location={rtsp_location} ! queue ! rtph264depay ! h264parse ! queue ! omxh264dec ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! appsink wait-on-eos=false max-buffers=1 drop=True"
+rtsp_str = f"rtspsrc location={rtsp_location} ! queue ! rtph264depay ! h264parse ! queue ! omxh264dec ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! appsink wait-on-eos=false max-buffers=1 drop=True"
 
 poligones_filepath = proj_path + 'polygones.dat'
 settings_filepath = proj_path + 'settings.dat'
@@ -294,7 +294,7 @@ def run_rtsp_media_server():
 
 
 def start_hls_streaming():
-    frames_per_sec = 25
+    frames_per_sec = 10
     video_filename_template = 'file%d.ts'
     videofiles_num = 5
     playlist_filename = 'playlist.m3u8'
