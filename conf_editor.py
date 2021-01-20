@@ -78,6 +78,7 @@ def file_edit_jetson_network_interfaces(fname, ip, mask, gate):
         print ('file_edit Bad params!')
         return False
 
+    # if some of parameters empty
     if not ip.strip() or not mask.strip() or not gate.strip():
         return False
 
@@ -93,13 +94,19 @@ def file_edit_jetson_network_interfaces(fname, ip, mask, gate):
     
     if True:
         strs = file.split('\n')
+        smth_changed = False
         for i, _str in enumerate(strs):
-            if (addr_val in _str) & (not '#' in _str):
-                strs[i] = addr_val + ip
-            if (mask_val in _str) & (not '#' in _str):
-                strs[i] = mask_val + mask
-            if (gate_val in _str) & (not '#' in _str):
-                strs[i] = gate_val + gate
+            if not _str.startswith('#'):
+                if addr_val in _str:
+                    strs[i] = addr_val + ip
+                if mask_val in _str:
+                    strs[i] = mask_val + mask
+                if gate_val in _str:
+                    strs[i] = gate_val + gate
+            if _str != strs[i]:
+                smth_changed =True
+        if not smth_changed:
+            return False
     # except:
         # print('st2')
     

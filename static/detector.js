@@ -820,7 +820,8 @@ window.onload = function () {
                 compressed_stream.style.visibility = 'visible';
                 uncompressed_stream.style.visibility = 'hidden';
                 img_div.replaceChild(compressed_stream, uncompressed_stream);
-                compresstion_mode_header.innerHTML = "Режим сжатого потока"
+                compresstion_mode_header.innerHTML = "Режим сжатого потока";
+                compressed_stream.play();
                 console.log("Compressed stream shown");
             }
         };

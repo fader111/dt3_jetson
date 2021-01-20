@@ -139,9 +139,10 @@ def sendSettingsToServer():
     ip_ext = ip  # +'/24' # костыль пока маску не сделал
     # change_ip_on_jetson(ip_ext, gateway)  # меняет ip и default gw - версия с network Manager
     # меняет ip и default gw - версия с /etc/network/interfaces
-    change_ip_on_jetson_nw_inf(ip, mask, gateway)
-    # применить все настройки перегрузить сетевые службы
-    applyIPsettingsJetson(gateway)
+    if change_ip_on_jetson_nw_inf(ip, mask, gateway):
+        # apply all settings, reload network services
+        applyIPsettingsJetson(gateway)
+
     with open(settings_file_path, 'w') as f:  # Открываем на чтение и запись
         # записываем только то, что не сохранится в линуксе - адрес хаба и калибровачный полигон
         # остальное - ip маска и шлюз применится в линуксе и сохранится. записывать нет надо.
@@ -382,13 +383,15 @@ change_ip_lock = Lock()
 def change_ip_on_jetson_nw_inf(ip, mask, gate, fname='/etc/network/interfaces'):
     """ CURRENT VERSION 
         ONLY FOR JETSON without Network Manager 
-        cahanges ip, mask, gate in file /etc/network/interfaces """
+        cahanges ip, mask, gate in file /etc/network/interfaces
+        returns True if it really changes are made. Smth else - False
+    """
     if not winMode:
         # file_edit_jetson(fname, ip, gate)
         if change_ip_lock.locked():
-            return
+            return False
         with change_ip_lock:
-            file_edit_jetson_network_interfaces(fname, ip, mask, gate)
+            return file_edit_jetson_network_interfaces(fname, ip, mask, gate)
 
 
 def set_Default_IP_Settings(def_ip="192.168.0.34/24", def_mask="255.255.255.0", def_gateway="192.168.0.254"):
