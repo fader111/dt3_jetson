@@ -134,6 +134,7 @@ def sendSettingsToServer():
         calibPoly = request.form['calibration']
         calib_zone_length = request.form['calib_zone_length']
         calib_zone_width = request.form['calib_zone_width']
+        source_stream_type = request.form['source_stream_type']
     ipStatus["hub"] = hub
     # print('from python: ip', ip,'  mask',mask, '  gateway',gateway,'  hub',hub)
     ip_ext = ip  # +'/24' # костыль пока маску не сделал
@@ -150,17 +151,18 @@ def sendSettingsToServer():
         f.write(json.dumps({"hub": hub,  # Пишем данные в файл.
                             "calibration": calibPoly,
                             "calib_zone_length": calib_zone_length,
-                            "calib_zone_width": calib_zone_width
-                            }))
-        print('IP settings saved!')
+                            "calib_zone_width": calib_zone_width,
+                            "source_stream_type": source_stream_type
+                            }, indent=4))
     # put polygones and settings to the queue for update them on main_proc_dlib
     # need to put both, because poly depends on calibration, which are in the settings
 
     updateSettings(json.dumps({'hub': hub,
                                'calibration': calibPoly,
                                'calib_zone_length': calib_zone_length,
-                               'calib_zone_width': calib_zone_width
-                               }))
+                               'calib_zone_width': calib_zone_width,
+                               'source_stream_type': source_stream_type
+                               }, indent=4))
     # needs to be sure that settings are inplemented before polygones
     time.sleep(1)
     # because settings queue is a bit slower then polygones queue ( ?? need one queue for both polygones and settings??)
@@ -171,7 +173,7 @@ def sendSettingsToServer():
     res = json.loads(getPolyFromServer())
     updatePoly(res)
 
-    return json.dumps({'ip': ip, 'gateway': gateway, 'hub': hub})
+    return json.dumps({'ip': ip, 'gateway': gateway, 'hub': hub}, indent=4)
 
 
 def sendHubStatusToWeb():
@@ -194,7 +196,7 @@ def sendHubStatusToWeb():
 @app.route('/showStatusHub', methods=['GET', 'POST'])
 def showStatusHub():
     """shows hub status on web page"""
-    return json.dumps(sendHubStatusToWeb())
+    return json.dumps(sendHubStatusToWeb(), indent=4)
 
 
 @app.route('/sendPolyToServer', methods=['GET', 'POST'])
@@ -217,11 +219,11 @@ def sendPolyToServer():
                 updatePoly(poly)
             except:
                 print(u"Не удалось сохранить файл polygones.dat")
-                return json.dumps("Polygones wasn't sent to server...")
+                return json.dumps("Polygones wasn't sent to server...", indent=4)
 
-            return json.dumps('Polygones sent to server...')
+            return json.dumps('Polygones sent to server...', indent=4)
         print('polygones type IS WRONG!')
-        return json.dumps('Wrong data sent to server...')
+        return json.dumps('Wrong data sent to server...', indent=4)
 
 
 @app.route('/getPolyFromServer', methods=['GET', 'POST'])
@@ -239,9 +241,9 @@ def getPolyFromServer():
     except:
         print(u"Не удалось прочитать файл polygones.dat")
     # print('считанные рамки = ', poly)
-    polygones = json.dumps(poly)
+    polygones = json.dumps(poly, indent=4)
     updatePoly(poly)
-    return json.dumps(poly)
+    return json.dumps(poly, indent=4)
 
 
 @app.route('/getSettingsFromServer', methods=['GET', 'POST'])
@@ -259,7 +261,7 @@ def getSettingsFromServer():
         print(u"Не удалось прочитать файл settings.dat")
     # print('считанные настройки = ', settings)
     updateSettings(settings)
-    return json.dumps(settings)
+    return json.dumps(settings, indent=4)
 
 
 @auth.get_password

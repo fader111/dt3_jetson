@@ -20,14 +20,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="715e8f66-0395-401d-bb44-76120e319c41" name="Default" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/share_camera_rtsp.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/conf_editor.py" beforeDir="false" afterPath="$PROJECT_DIR$/conf_editor.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dt3_web_main.py" beforeDir="false" afterPath="$PROJECT_DIR$/dt3_web_main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/polygones.dat" beforeDir="false" afterPath="$PROJECT_DIR$/polygones.dat" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/settings.dat" beforeDir="false" afterPath="$PROJECT_DIR$/settings.dat" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/static/detector.js" beforeDir="false" afterPath="$PROJECT_DIR$/static/detector.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main_proc_dlib.py" beforeDir="false" afterPath="$PROJECT_DIR$/main_proc_dlib.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/rtsp.config" beforeDir="false" afterPath="$PROJECT_DIR$/rtsp.config" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -49,6 +45,14 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitSEFilterConfiguration">
+    <file-type-list>
+      <filtered-out-file-type name="LOCAL_BRANCH" />
+      <filtered-out-file-type name="REMOTE_BRANCH" />
+      <filtered-out-file-type name="TAG" />
+      <filtered-out-file-type name="COMMIT_BY_MESSAGE" />
+    </file-type-list>
   </component>
   <component name="JsBuildToolGruntFileManager" detection-done="true" sorting="DEFINITION_ORDER" />
   <component name="JsBuildToolPackageJson" detection-done="true" sorting="DEFINITION_ORDER" />
@@ -221,8 +225,5 @@
       </map>
     </option>
     <option name="oldMeFiltersMigrated" value="true" />
-  </component>
-  <component name="VcsContentAnnotationSettings">
-    <option name="myLimit" value="2678400000" />
   </component>
 </project>

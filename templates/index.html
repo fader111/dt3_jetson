@@ -87,6 +87,20 @@
               <form method="post" id="settinsForm"></form>
               <table class="table" style="text-align: left; font:14px Arial, Helvetica, sans-serif;" border="0" cellpadding="1" cellspacing="1">
             <tbody>
+                <tr>
+                    <td style="width:500px">Источник видеопотока</td>
+                    <td>
+                        <select style="width:120px" class="" form="settinsForm" id="source_stream_type"
+                               name="source_stream_type">
+                            <option value="local" {% if settings.source_stream_type == 'local' %} selected {% endif %}>
+                                Local camera
+                            </option>
+                            <option value="rtsp" {% if settings.source_stream_type == 'rtsp' %} selected {% endif %}>
+                                RTSP stream
+                            </option>
+                        </select>
+                    </td>
+                </tr>
               <tr>
                 <td style="width:500px">IP адрес камеры:</td>
                             <!--required pattern='#^[0-9]+$#'-->

@@ -2,6 +2,7 @@
     Build tracks based on dlib tracker which updated by detector using iou algorythm.
     Kalman filtering implemented???
 """
+import enum
 import pathlib
 import telnetlib
 
@@ -72,8 +73,8 @@ iou_tresh_perc = 10
 
 max_bbox_sqare = 1000   # when detection bbox too small, do not process it.
 
-width = 1920            # 640 width settings for camera capturing
-height = 1080           # 480 height for the same
+width = 1280            # 640 width settings for camera capturing
+height = 720            # 480 height for the same
 proc_width = 640        # x size of window for processing with CNN
 proc_height = 480       # y size
 # camera_src = '/dev/video1'  # for USB camera
@@ -142,12 +143,9 @@ else:
 # treshold for tracker append criteria 0.4 less- more sensitive, more mistakes
 iou_tresh = 0.2
 
-# only for sci camera
-# framerate=(fraction)60/1 - optimum rate
-camera_str = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
-		height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv ! \
-        video/x-raw, width=(int)1280, height=(int)720, format=(string)BGRx ! \
-        videoconvert ! video/x-raw, format=(string)BGR ! appsink wait-on-eos=false max-buffers=1 drop=True"
+class VideoStreamSources(enum.Enum):
+    LOCAL_CAMERA = 'local'
+    RTSP_STREAM = 'rtsp'
 
 # not used,  just sample
 camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
@@ -165,13 +163,29 @@ camera_str_ufanet = f"souphttpsrc location=http://136.169.226.9/001-999-037/trac
                 f"hlsdemux ! omxh264dec ! videoconvert " \
                 f"appsink wait-on-eos=false max-buffers=1 drop=True "
 
-rtsp_config_filename = pathlib.Path(proj_path) / pathlib.Path('rtsp.config')
-if rtsp_config_filename.exists():
-    with rtsp_config_filename.open('r') as rtsp_config_file:
-        rtsp_location = rtsp_config_file.read()
-else:
-    rtsp_location = 'rtsp://172.16.20.97/user=admin_password=tlJwpbo6_channel=1_stream=0.sdp?real_stream'
-rtsp_str = f"rtspsrc location={rtsp_location} ! queue ! rtph264depay ! h264parse ! queue ! omxh264dec ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! appsink wait-on-eos=false max-buffers=1 drop=True"
+
+def construct_input_pipline(stream_source_type):
+    global camera_str
+    if stream_source_type is VideoStreamSources.LOCAL_CAMERA:
+        # only for sci camera
+        # framerate=(fraction)60/1 - optimum rate
+        camera_str = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
+                height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv ! \
+                video/x-raw, width=(int)1280, height=(int)720, format=(string)BGRx ! \
+                videoconvert ! video/x-raw, format=(string)BGR ! appsink wait-on-eos=false max-buffers=1 drop=True"
+    elif stream_source_type is VideoStreamSources.RTSP_STREAM:
+        rtsp_config_filename = pathlib.Path(proj_path) / pathlib.Path('rtsp.config')
+        if rtsp_config_filename.exists():
+            with rtsp_config_filename.open('r') as rtsp_config_file:
+                rtsp_location = rtsp_config_file.read().strip()
+        else:
+            rtsp_location = 'rtsp://172.16.20.97/user=admin_password=tlJwpbo6_channel=1_stream=0.sdp?real_stream'
+        camera_str = f"rtspsrc location={rtsp_location} ! queue ! rtph264depay ! h264parse ! queue ! omxh264dec ! " \
+                     f"videoconvert ! appsink wait-on-eos=false max-buffers=1 drop=True"
+    else:
+        raise NotImplementedError(f"Stream source type {stream_source_type} unknown!")
+
+
 
 poligones_filepath = proj_path + 'polygones.dat'
 settings_filepath = proj_path + 'settings.dat'
@@ -187,7 +201,8 @@ def read_setts_from_syst(filePath):
                  "hub": get_hub(filePath),
                  "calibration": get_settings_from_file(filePath)["calibration"],
                  "calib_zone_length": get_settings_from_file(filePath)["calib_zone_length"],
-                 "calib_zone_width": get_settings_from_file(filePath)["calib_zone_width"]
+                 "calib_zone_width": get_settings_from_file(filePath)["calib_zone_width"],
+                 "source_stream_type": get_settings_from_file(filePath)["source_stream_type"]
                  }
     return settings_
 
@@ -289,7 +304,11 @@ def local_rtsp_camera_reboot_thread():
         reboot_local_rtsp_camera()
 
 def run_rtsp_media_server():
-    path_of_executable = pathlib.Path('/home/a/sources/RtspRestreamServer/build/RestreamServerApp/RestreamServerApp')
+    """
+    alternative_path = '/home/a/sources/RtspRestreamServer/build/RestreamServerApp/RestreamServerApp'
+    :return:
+    """
+    path_of_executable = pathlib.Path('/home/a/sources/rtsp-simple-server/rtsp-simple-server /home/a/sources/rtsp-simple-server/rtsp-simple-server.yml')
     subprocess.Popen(str(path_of_executable), shell=True)
 
 
@@ -392,7 +411,8 @@ def construct_pipeline(frames_per_sec, dir_of_video, video_filename_template, vi
     queue_rtsp_pad = queue_rtsp.get_static_pad("sink")
     pipeline.add(queue_rtsp)
     rtspclientsink = Gst.ElementFactory.make('rtspclientsink', None)
-    rtspclientsink.set_property('location', 'rtsp://localhost:8001/test?record')
+    rtspclientsink.set_property('location', 'rtsp://localhost:8001/test')
+    rtspclientsink.set_property('protocols', 'tcp')
     pipeline.add(rtspclientsink)
 
     appsrc.link(videoconvert)
@@ -425,12 +445,6 @@ def proc():
     # import tracemalloc
     # tracemalloc.start()
 
-    if USE_CAMERA:
-        # cap = cv2.VideoCapture(camera_src) # for GSTreamer handling camera
-        cap = cv2.VideoCapture(camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
-    else:
-        cap = cv2.VideoCapture(video_src)
-
     # prev_bboxes = []  # bboxes to draw from previous frame
     key_time = 1
     new_tr_number = 0   # for tracks numeration
@@ -461,6 +475,15 @@ def proc():
     ramki_status_ = [0 for i in range(len(polygones["polygones"]))]
     # Init ip and other settings from system
     settings = read_setts_from_syst(proj_path + "settings.dat")
+
+    stream_source_type = VideoStreamSources(settings['source_stream_type'])
+    construct_input_pipline(stream_source_type)
+
+    if USE_CAMERA:
+        # cap = cv2.VideoCapture(camera_src) # for GSTreamer handling camera
+        cap = cv2.VideoCapture(camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
+    else:
+        cap = cv2.VideoCapture(video_src)
 
     # calibration polygon point Init
     if ("calibration") in settings:
@@ -803,6 +826,13 @@ def proc():
             # if they aren't the same, update statistics (below)
             temp_settings = deepcopy(settings)
             settings = json.loads(q_settings.get())
+
+            if stream_source_type != VideoStreamSources(settings['source_stream_type']):
+                stream_source_type = VideoStreamSources(settings['source_stream_type'])
+                construct_input_pipline(stream_source_type)
+                cap = cv2.VideoCapture(
+                    camera_str, cv2.CAP_GSTREAMER)
+
             addrString[0] = 'https://' + settings["hub"] + '/detect'
             calibrPoints = json.loads(settings["calibration"])
             calibrPoints_sc = [[x*x_size//w_web, y*y_size//h_web]

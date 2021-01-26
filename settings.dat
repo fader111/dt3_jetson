@@ -1,1 +1,7 @@
-{"hub": "", "calibration": "[[278,262],[157,551],[643,589],[424,283]]", "calib_zone_length": "50", "calib_zone_width": "8"}
+{
+    "hub": "",
+    "calibration": "[[110,83],[101,496],[664,498],[480,75]]",
+    "calib_zone_length": "50",
+    "calib_zone_width": "8",
+    "source_stream_type": "rtsp"
+}

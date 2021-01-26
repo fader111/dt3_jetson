@@ -1012,7 +1012,8 @@ window.onload = function () {
             "hub": ip_address_hub.value,
             "calibration": JSON.stringify(calibrationPoints),
             "calib_zone_length": calib_zone_length.value,
-            "calib_zone_width": calib_zone_width.value
+            "calib_zone_width": calib_zone_width.value,
+            "source_stream_type": source_stream_type.value
         };
         sendSettingsToServer(arg);
     };
