@@ -21,7 +21,7 @@ from main_proc_dlib import *
 from conf_editor import *
 from get_net_settings import *
 from pprint import pprint
-from werkzeug.contrib.fixers import ProxyFix
+from werkzeug.middleware.proxy_fix import ProxyFix
 from functools import wraps, update_wrapper
 from datetime import datetime
 

@@ -1034,7 +1034,9 @@ def proc():
 
             # put the picture for web in the picture Queue
             put_queue(q_pict, frame_show)
-            key = cv2.waitKey(key_time) & 0xFF
+            # fix_this
+            key = 0
+            # key = cv2.waitKey(key_time) & 0xFF
             # if the `ESC` key was pressed, break from the loop
             if key == 27:
                 break
