@@ -102,7 +102,6 @@ def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
     return Response(gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-
 def gen():
     """Video streaming generator function."""
     global frame
@@ -454,6 +453,13 @@ cv2.putText(frame, 'wait...', (180, 250), font,
 main_proc = Process(target=main_process)
 main_proc.start()
 
+# used if Flask runs from file
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8080, debug=False,
-            threaded=True, use_reloader=False)
+    host = '192.168.0.103'  # 0.0.0.0
+    port = '5000'   # 8080
+    debug = True    # False
+    threaded = True
+    use_reloader = True # False
+
+    app.run(host=host, port=port, debug=debug,
+            threaded=threaded, use_reloader=use_reloader)
