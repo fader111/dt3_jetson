@@ -43,6 +43,12 @@ Gst.init()
 TRACKS_ENABLED = False
 MAX_TRACKS_NUM = 99
 
+RAMKA_COOLDOWN = 1      # sec, TODO not used yet
+
+USE_SEGMENTATION_NETWORK = True
+if USE_SEGMENTATION_NETWORK:
+    from segnet.segnet_utils import segmentationBuffers
+
 if 'linux' in sys.platform:
     import jetson.inference
     import jetson.utils    
@@ -77,9 +83,12 @@ coco_networks = [
 
 network = coco_networks[2]
 
+if USE_SEGMENTATION_NETWORK:
+    network = 'fcn-resnet18-cityscapes'
+
 threshold = 0.2         # 0.2 for jetson inference object detection
 # tresh for cnn detection bbox and car detecting zone intersection in percents
-iou_tresh_perc = 10
+iou_tresh_perc = 65
 
 max_bbox_sqare = 1000   # when detection bbox too small, do not process it.
 
@@ -122,7 +131,35 @@ if 'win' in sys.platform:
     winMode = True
 else:
     proj_path = '/home/a/dt3_jetson/'  # путь до папки проекта
-    net = jetson.inference.detectNet(network, sys.argv, threshold)
+    if USE_SEGMENTATION_NETWORK:
+        import argparse
+
+        parser = argparse.ArgumentParser(description="Segment a live camera stream using an semantic segmentation DNN.",
+                                         formatter_class=argparse.RawTextHelpFormatter,
+                                         epilog=jetson.inference.segNet.Usage() +
+                                                jetson.utils.videoSource.Usage() + jetson.utils.videoOutput.Usage() + jetson.utils.logUsage())
+
+        parser.add_argument("input_URI", type=str, default="", nargs='?', help="URI of the input stream")
+        parser.add_argument("output_URI", type=str, default="", nargs='?', help="URI of the output stream")
+        parser.add_argument("--network", type=str, default="fcn-resnet18-cityscapes",
+                            help="pre-trained model to load, see below for options")
+        parser.add_argument("--filter-mode", type=str, default="linear", choices=["point", "linear"],
+                            help="filtering mode used during visualization, options are:\n  'point' or 'linear' (default: 'linear')")
+        parser.add_argument("--visualize", type=str, default="overlay,mask",
+                            help="Visualization options (can be 'overlay' 'mask' 'overlay,mask'")
+        parser.add_argument("--ignore-class", type=str, default="void",
+                            help="optional name of class to ignore in the visualization results (default: 'void')")
+        parser.add_argument("--alpha", type=float, default=150.0,
+                            help="alpha blending value to use during overlay, between 0.0 and 255.0 (default: 150.0)")
+        parser.add_argument("--stats", action="store_true",
+                            help="compute statistics about segmentation mask class outut")
+
+        opt = parser.parse_known_args()[0]
+        net = jetson.inference.segNet(network, [f'--network={network}'])
+        net.SetOverlayAlpha(150)
+        buffers = segmentationBuffers(net, opt)
+    else:
+        net = jetson.inference.detectNet(network, sys.argv, threshold)
 
 # video_src = "/home/a/Videos/U524806_3.avi"
 if 'win' in sys.platform:
@@ -188,7 +225,7 @@ def choose_jetson_input_source(stream_source_type):
         source = jetson.utils.videoSource('csi://0', ['--input-flip=rotate-180'])
     elif stream_source_type is VideoStreamSources.VIDEO_FILE:
         print('WARNING filepath is hardoded')
-        filename = 'highway_traffic_example_youtube.mp4'
+        filename = 'snowy5.mp4'
         source = jetson.utils.videoSource(
             f'file:///home/a/Videos/{filename}', ['--input-loop=-1']
         )
@@ -319,6 +356,7 @@ def init_status60_15_struct(n_ramki):
     status15["avg_time_in_zone"] = [0 for j in range(n_ramki)]
     # print()
 
+
 def bbox_square(bbox):
     return abs((bbox[0]-bbox[2])*(bbox[1]-bbox[3]))
 
@@ -338,11 +376,13 @@ def reboot_local_rtsp_camera():
     tn.write(b"reboot\n")
     tn.read_all()
 
+
 def local_rtsp_camera_reboot_thread():
     reboot_timeout = 24*60*60       # secs, 24 hours
     while True:
         time.sleep(reboot_timeout)
         reboot_local_rtsp_camera()
+
 
 def run_rtsp_media_server():
     """
@@ -476,6 +516,13 @@ def clear_dir(dir_: pathlib.Path):
         else:
             subpath.unlink()
 
+
+def get_contours_from_mask(mask: np.ndarray) -> typing.List[Polygon]:
+    mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+    ret, thresh = cv2.threshold(mask, 10, 255, cv2.THRESH_BINARY)
+    contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    return [Polygon(c.reshape(-1, 2)) for c in contours]
 
 def tick():
     pass
@@ -615,7 +662,7 @@ def proc():
     reboot_camera_thread = Thread(target=local_rtsp_camera_reboot_thread)
     reboot_camera_thread.start()
 
-    jetson_video_source = choose_jetson_input_source(VideoStreamSources.VIDEO_FILE)
+    jetson_video_source = choose_jetson_input_source(VideoStreamSources.LOCAL_CAMERA)     # change to local camera before commit
 
     while True:
         # just for profiling
@@ -707,7 +754,18 @@ def proc():
                 # frame, width, height = camera.CaptureRGBA(zeroCopy = True)
                 '''!!!'''
                 # TODO do we need width, height?
-                detections = net.Detect(img, overlay=overlay)    # frame_cuda -> img
+                if USE_SEGMENTATION_NETWORK:
+                    buffers.Alloc(img.shape, img.format)
+                    net.Process(img)
+                    if buffers.mask:
+                        net.Mask(buffers.mask, filter_mode='linear')
+                    if buffers.overlay:
+                        net.Overlay(buffers.overlay, filter_mode='linear')
+                    frame_show = jetson.utils.cudaToNumpy(buffers.overlay)
+                    frame_show = np.copy(frame_show)
+                    mask = buffers.mask
+                else:
+                    detections = net.Detect(img, overlay=overlay)    # frame_cuda -> img
                 # for detection in detections:
                 #    if detection.ClassID == 3: # car in coco
                 #    print ('car detection confidence -', detection.Confidence)
@@ -723,65 +781,68 @@ def proc():
             # tss = time.time() # 8-14 w/o/ stdout on video
 #            frame = cv2.cvtColor(frame.astype(np.uint8), cv2.COLOR_RGBA2RGB)
 
-            for detection in detections:
-                # print('  class', detection.Area, detection.ClassID)
-                # print('detection', detection)
-                x1 = int(detection.Left)
-                y1 = int(detection.Top)
-                x2 = int(detection.Right)
-                y2 = int(detection.Bottom)
-                bbox = (x1, y1, x2, y2)
-                
-                # if bbox_square(bbox) < max_bbox_sqare:
+            if USE_SEGMENTATION_NETWORK:
+                pass
+            else:
+                for detection in detections:
+                    # print('  class', detection.Area, detection.ClassID)
+                    # print('detection', detection)
+                    x1 = int(detection.Left)
+                    y1 = int(detection.Top)
+                    x2 = int(detection.Right)
+                    y2 = int(detection.Bottom)
+                    bbox = (x1, y1, x2, y2)
+
+                    # if bbox_square(bbox) < max_bbox_sqare:
+                        # print(f'bbox_square {bbox_square(bbox)}')
+
+                    if bbox_square(bbox) < max_bbox_sqare:
+                        continue
                     # print(f'bbox_square {bbox_square(bbox)}')
 
-                if bbox_square(bbox) < max_bbox_sqare:
-                    continue
-                # print(f'bbox_square {bbox_square(bbox)}')
+                    if detection.ClassID in CLASSES_EXTENDED:
+                        # conf = round(detection.Confidence,2)
+                        class_string = f'{CLASSES_EXTENDED[detection.ClassID]} - {detection.Confidence:.2f}'
+                    else:
+                        class_string = ('wtf?')
+                        continue  # go
 
-                if detection.ClassID in CLASSES_EXTENDED:
-                    # conf = round(detection.Confidence,2)
-                    class_string = f'{CLASSES_EXTENDED[detection.ClassID]} - {detection.Confidence:.2f}'
-                else:
-                    class_string = ('wtf?')
-                    continue  # go
+                    cv2.putText(frame_show, class_string, (x1+1, y1-4),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 1)
+                    cv2.rectangle(frame_show, (x1, y1), (x2, y2), green, 1)
+                    # if detection.ClassID == 3: # car in coco
+                    # print ('car detection confidence -', detection.Confidence)
+                    stop_ = False
 
-                cv2.putText(frame_show, class_string, (x1+1, y1-4),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 1)
-                cv2.rectangle(frame_show, (x1, y1), (x2, y2), green, 1)
-                # if detection.ClassID == 3: # car in coco
-                # print ('car detection confidence -', detection.Confidence)
-                stop_ = False
-
-                # assign bbox to the track
-                if TRACKS_ENABLED:
-                    for track in tracks:
-                        # if bbox intesect good with last bbox in the track
-                        # renew the track - delete tracker, append bbox to track,
-                        # start new tracker from this bbox
-                        iou_val = bb_intersection_over_union(bbox, track.boxes[-1])
-                        if iou_val > iou_tresh:
-                            # if bbox touches the frame borders, don't take it,
-                            # track builds wrong in this case
-                            stop_ = True        # prevent creating new track object
-                            if not bbox_touch_the_border(bbox, height, width):
-                                bboxes.append(bbox)
-                                track.renew(
-                                    frame, bbox, detection.ClassID, detection.Confidence)
-                            else:
-                                # mark this track as completed, don't update it anymore
-                                track.complete = True
-                                # track.boxes = [] # no, exception in iou_val above
-                            break  # do not need do more with this bbox, go out
-                    if stop_:
-                        break
-                    # or, if bbox didn't assingned to any track, create a new track
-                    tracks.append(Track(frame, bbox, new_tr_number,
-                                        detection.ClassID, detection.Confidence, warp_dimentions_px,
-                                        calib_area_dimentions_m, M,))
-                    new_tr_number += 1
-                    if new_tr_number > MAX_TRACKS_NUM:
-                        new_tr_number = 0
+                    # assign bbox to the track
+                    if TRACKS_ENABLED:
+                        for track in tracks:
+                            # if bbox intesect good with last bbox in the track
+                            # renew the track - delete tracker, append bbox to track,
+                            # start new tracker from this bbox
+                            iou_val = bb_intersection_over_union(bbox, track.boxes[-1])
+                            if iou_val > iou_tresh:
+                                # if bbox touches the frame borders, don't take it,
+                                # track builds wrong in this case
+                                stop_ = True        # prevent creating new track object
+                                if not bbox_touch_the_border(bbox, height, width):
+                                    bboxes.append(bbox)
+                                    track.renew(
+                                        frame, bbox, detection.ClassID, detection.Confidence)
+                                else:
+                                    # mark this track as completed, don't update it anymore
+                                    track.complete = True
+                                    # track.boxes = [] # no, exception in iou_val above
+                                break  # do not need do more with this bbox, go out
+                        if stop_:
+                            break
+                        # or, if bbox didn't assingned to any track, create a new track
+                        tracks.append(Track(frame, bbox, new_tr_number,
+                                            detection.ClassID, detection.Confidence, warp_dimentions_px,
+                                            calib_area_dimentions_m, M,))
+                        new_tr_number += 1
+                        if new_tr_number > MAX_TRACKS_NUM:
+                            new_tr_number = 0
 
 
         ### TRACKING PHASE ###
@@ -934,11 +995,10 @@ def proc():
         # If any track point is inside the detecting zone - change it's state to On.
         # use shapely lib to calculate intersections of polygones (good lib)
         for i, ramka in enumerate(ramki_scaled):
-            ramka.color = 0  # for each ramka before iterate for frames, reset it
-            ramki_status[i] = 0
-
             # if some track below cross it, it will be in "on" state for whole frame.
             if TRACKS_ENABLED:
+                ramka.color = 0  # for each ramka before iterate for frames, reset it
+                ramki_status[i] = 0
                 for track in tracks:
                     if not track.complete:
                         shapely_box = box(
@@ -963,7 +1023,7 @@ def proc():
                                     # then obtain status
                                     if not track.status_obt and (len(track.points) > 3):
 
-                                        ### Average spped ###
+                                        ### Average speed ###
                                         ramka.status['avg_speed_1'].append(round(track.aver_speed))
 
 
@@ -983,13 +1043,30 @@ def proc():
             else:
                 # ramka triggers on detection
                 try:
-                    for detection in detections:
-                        detection_square = (detection.Right - detection.Left) * (detection.Top - detection.Bottom)
-                        shapely_box = box(detection.Left, detection.Bottom, detection.Right, detection.Top)
-                        interscec_ = ramka.shapely_path.intersection(shapely_box).area / ramka.area * 100
-                        if interscec_ > iou_tresh_perc:
-                            ramka.color = 1
-                            ramki_status[i] = 1
+                    if USE_SEGMENTATION_NETWORK:
+                        contours = get_contours_from_mask(jetson.utils.cudaToNumpy(mask))
+                        # frame_show = cv2.drawContours(frame_show, contours, -1, (0, 255, 0))
+                        ramka_prev_status = ramki_status[i]
+                        ramka.color = 0  # for each ramka before iterate for frames, reset it
+                        ramki_status[i] = 0
+                        for contour in contours:
+                            interscec_ = ramka.shapely_path.intersection(contour).area / ramka.area * 100
+                            if interscec_ > iou_tresh_perc:
+                                ramka.color = 1
+                                ramki_status[i] = 1
+                                break
+                        if ramka_prev_status == 1 and ramki_status[i] == 0:
+                            ramka.status['avg_speed_1'].append(0)
+
+                    else:
+                        for detection in detections:
+                            detection_square = (detection.Right - detection.Left) * (detection.Top - detection.Bottom)
+                            shapely_box = box(detection.Left, detection.Bottom, detection.Right, detection.Top)
+                            interscec_ = ramka.shapely_path.intersection(shapely_box).area / ramka.area * 100
+                            if interscec_ > iou_tresh_perc:
+                                    ramka.color = 1
+                                    ramki_status[i] = 1
+
                 except NameError:
                     pass
 
@@ -1022,6 +1099,7 @@ def proc():
                 if ramka.directions[j] == 1:
                     cv2.polylines(frame_show, np.array(
                         [ramka.arrows_path[j]]), 1, color_, 2)
+
             # draw ramki sides distances from the calibration polygone in meters
             cv2.putText(frame_show, f'{ramka.up_limit_y_m:.1f}', ramka.up_side_center,
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, white, 1)
