@@ -47,7 +47,7 @@ RAMKA_COOLDOWN = 1      # sec, TODO not used yet
 
 USE_SEGMENTATION_NETWORK = True
 if USE_SEGMENTATION_NETWORK:
-    from segnet.segnet_utils import segmentationBuffers
+    from segmentation_networks.segnet_utils import segmentationBuffers
 
 if 'linux' in sys.platform:
     import jetson.inference
