@@ -40,6 +40,14 @@ gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
 Gst.init()
 
+TRACKS_ENABLED = False
+MAX_TRACKS_NUM = 99
+
+RAMKA_COOLDOWN = 1      # sec, TODO not used yet
+
+USE_SEGMENTATION_NETWORK = True
+if USE_SEGMENTATION_NETWORK:
+    from segmentation_networks.segnet_utils import segmentationBuffers
 
 if 'linux' in sys.platform:
     import jetson.inference
@@ -65,11 +73,22 @@ network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
                "googlenet"          # 5 also good
                ]
 
-network = network_lst[1]
+# network = network_lst[1]
+
+coco_networks = [
+    'ssd-mobilenet-v1',
+    'ssd-mobilenet-v2',
+    'ssd-inception-v2'
+]
+
+network = coco_networks[2]
+
+if USE_SEGMENTATION_NETWORK:
+    network = 'fcn-resnet18-cityscapes'
 
 threshold = 0.2         # 0.2 for jetson inference object detection
 # tresh for cnn detection bbox and car detecting zone intersection in percents
-iou_tresh_perc = 10
+iou_tresh_perc = 65
 
 max_bbox_sqare = 1000   # when detection bbox too small, do not process it.
 
@@ -112,7 +131,35 @@ if 'win' in sys.platform:
     winMode = True
 else:
     proj_path = '/home/a/dt3_jetson/'  # путь до папки проекта
-    net = jetson.inference.detectNet(network, sys.argv, threshold)
+    if USE_SEGMENTATION_NETWORK:
+        import argparse
+
+        parser = argparse.ArgumentParser(description="Segment a live camera stream using an semantic segmentation DNN.",
+                                         formatter_class=argparse.RawTextHelpFormatter,
+                                         epilog=jetson.inference.segNet.Usage() +
+                                                jetson.utils.videoSource.Usage() + jetson.utils.videoOutput.Usage() + jetson.utils.logUsage())
+
+        parser.add_argument("input_URI", type=str, default="", nargs='?', help="URI of the input stream")
+        parser.add_argument("output_URI", type=str, default="", nargs='?', help="URI of the output stream")
+        parser.add_argument("--network", type=str, default="fcn-resnet18-cityscapes",
+                            help="pre-trained model to load, see below for options")
+        parser.add_argument("--filter-mode", type=str, default="linear", choices=["point", "linear"],
+                            help="filtering mode used during visualization, options are:\n  'point' or 'linear' (default: 'linear')")
+        parser.add_argument("--visualize", type=str, default="overlay,mask",
+                            help="Visualization options (can be 'overlay' 'mask' 'overlay,mask'")
+        parser.add_argument("--ignore-class", type=str, default="void",
+                            help="optional name of class to ignore in the visualization results (default: 'void')")
+        parser.add_argument("--alpha", type=float, default=150.0,
+                            help="alpha blending value to use during overlay, between 0.0 and 255.0 (default: 150.0)")
+        parser.add_argument("--stats", action="store_true",
+                            help="compute statistics about segmentation mask class outut")
+
+        opt = parser.parse_known_args()[0]
+        net = jetson.inference.segNet(network, [f'--network={network}'])
+        net.SetOverlayAlpha(150)
+        buffers = segmentationBuffers(net, opt)
+    else:
+        net = jetson.inference.detectNet(network, sys.argv, threshold)
 
 # video_src = "/home/a/Videos/U524806_3.avi"
 if 'win' in sys.platform:
@@ -134,9 +181,16 @@ USE_CAMERA = True
 USE_GAMMA = False  # Gamma correction - True - for night video
 
 # bboxes = []  # bbox's of each frame # candidate for removing
-max_track_lifetime = 2  # if it older than num secs it removes
+
+def initialize_tracks_parameters():
+    global max_track_lifetime
+    max_track_lifetime = 2  # if it older than num secs it removes
+
+if TRACKS_ENABLED:
+    initialize_tracks_parameters()
+
 if USE_CAMERA:
-    detect_phase_period = 10  # detection phase period in frames
+    detect_phase_period = 1  # detection phase period in frames
 else:
     detect_phase_period = 5  # detection phase period in frames
 
@@ -146,6 +200,7 @@ iou_tresh = 0.2
 class VideoStreamSources(enum.Enum):
     LOCAL_CAMERA = 'local'
     RTSP_STREAM = 'rtsp'
+    VIDEO_FILE = 'file'
 
 # not used,  just sample
 camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
@@ -163,6 +218,29 @@ camera_str_ufanet = f"souphttpsrc location=http://136.169.226.9/001-999-037/trac
                 f"hlsdemux ! omxh264dec ! videoconvert " \
                 f"appsink wait-on-eos=false max-buffers=1 drop=True "
 
+def choose_jetson_input_source(stream_source_type):
+    # TODO filename and rtsp path: from where?
+    source = None
+    if stream_source_type is VideoStreamSources.LOCAL_CAMERA:
+        source = jetson.utils.videoSource('csi://0', ['--input-flip=rotate-180'])
+    elif stream_source_type is VideoStreamSources.VIDEO_FILE:
+        print('WARNING filepath is hardoded')
+        filename = 'snowy5.mp4'
+        source = jetson.utils.videoSource(
+            f'file:///home/a/Videos/{filename}', ['--input-loop=-1']
+        )
+    elif stream_source_type is VideoStreamSources.RTSP_STREAM:
+        print('WARNING rtsp path is hardcoded')
+        raise NotImplementedError('RTSP stream capture from jetson.utils is not implemented')
+    else:
+        pass
+
+    if source:
+        source.Open()
+    else:
+        raise Exception('no VideoSource instance created')
+
+    return source
 
 def construct_input_pipline(stream_source_type):
     global camera_str
@@ -278,6 +356,7 @@ def init_status60_15_struct(n_ramki):
     status15["avg_time_in_zone"] = [0 for j in range(n_ramki)]
     # print()
 
+
 def bbox_square(bbox):
     return abs((bbox[0]-bbox[2])*(bbox[1]-bbox[3]))
 
@@ -297,11 +376,13 @@ def reboot_local_rtsp_camera():
     tn.write(b"reboot\n")
     tn.read_all()
 
+
 def local_rtsp_camera_reboot_thread():
     reboot_timeout = 24*60*60       # secs, 24 hours
     while True:
         time.sleep(reboot_timeout)
         reboot_local_rtsp_camera()
+
 
 def run_rtsp_media_server():
     """
@@ -436,6 +517,16 @@ def clear_dir(dir_: pathlib.Path):
             subpath.unlink()
 
 
+def get_contours_from_mask(mask: np.ndarray) -> typing.List[Polygon]:
+    mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+    ret, thresh = cv2.threshold(mask, 10, 255, cv2.THRESH_BINARY)
+    contours, hierarchy = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    return [Polygon(c.reshape(-1, 2)) for c in contours]
+
+def tick():
+    pass
+
 def proc():
     # timer to restart detector when main thread crashes
     # wdt_tmr = Timer(30, wdt_func) # отключено на время отладки
@@ -447,7 +538,6 @@ def proc():
 
     # prev_bboxes = []  # bboxes to draw from previous frame
     key_time = 1
-    new_tr_number = 0   # for tracks numeration
     frm_number = 0
     ramki_scaled = []   # ramki scaled mass for Instances of Ramka
     # mass of 0 and 1 for send to hub as json, len = len(ramki_scaled), 0 if ramka off, 1 - if on
@@ -456,8 +546,11 @@ def proc():
     # copy of ramki status to sent to repeated timer for sending to hub.
     ramki_status_ = []
 
+    if TRACKS_ENABLED:
+        tracks = []         # list for Track class instances
+        new_tr_number = 0   # for tracks numeration
+
     bboxes = []
-    tracks = []         # list for Track class instances
     stop_ = False       # aux for detection break
     polygon_sc = []     # scaled polygon points
     calibrPoints = []   # list of points of calibration Polygon on road
@@ -479,14 +572,14 @@ def proc():
     stream_source_type = VideoStreamSources(settings['source_stream_type'])
     construct_input_pipline(stream_source_type)
 
-    if USE_CAMERA:
-        # cap = cv2.VideoCapture(camera_src) # for GSTreamer handling camera
-        cap = cv2.VideoCapture(camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
-    else:
-        cap = cv2.VideoCapture(video_src)
+    # if USE_CAMERA:
+    #     # cap = cv2.VideoCapture(camera_src) # for GSTreamer handling camera
+    #     cap = cv2.VideoCapture(camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
+    # else:
+    #     cap = cv2.VideoCapture(video_src)
 
     # calibration polygon point Init
-    if ("calibration") in settings:
+    if "calibration" in settings:
         calibrPoints = json.loads(settings["calibration"])
         # scaled polygones
         calibrPoints_sc = [[x*proc_width//w_web, y*proc_height//h_web]
@@ -569,76 +662,115 @@ def proc():
     reboot_camera_thread = Thread(target=local_rtsp_camera_reboot_thread)
     reboot_camera_thread.start()
 
+    jetson_video_source = choose_jetson_input_source(VideoStreamSources.LOCAL_CAMERA)     # change to local camera before commit
+
     while True:
+        # just for profiling
+        tick()
+
         # if memmon:
-        # snapshot = tracemalloc.take_snapshot()
-        # top_stats = snapshot.statistics('lineno')
-        # wdt_tmr.cancel()# отключено на время отладки
-        # wdt_tmr = Timer(10, wdt_func)# отключено на время отладки
-        # wdt_tmr.start()# отключено на время отладки
+        #   snapshot = tracemalloc.take_snapshot()
+        #   top_stats = snapshot.statistics('lineno')
+        #   wdt_tmr.cancel()# отключено на время отладки
+        #   wdt_tmr = Timer(10, wdt_func)# отключено на время отладки
+        #   wdt_tmr.start()# отключено на время отладки
+
         frm_number += 1
+        # TODO maybe change to monotonic
         tss = time.time()  # 90 ms , 60 w/o/ stdout
-        ret, img = cap.read()
+        # TODO remove ret
+        ret = True
+        img = jetson_video_source.Capture()
+        # ret, img = cap.read()
         # tss= time.time() #78 ms
 
+        # ??
         if len(ramki_status) == len(ramki_status_):
             for i in range(len(ramki_status)):
                 ramki_status_[i] = ramki_status[i]
 
+        # TODO remove this
         if not ret:
-            if USE_CAMERA:
-                # cap = cv2.VideoCapture(camera_src) # for USB camera
-                cap = cv2.VideoCapture(
-                    camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
-            else:
-                cap = cv2.VideoCapture(video_src)
-            ret, img = cap.read()
-        orig_img = img
+            ret = True
+            img = jetson_video_source.Capture()
+            # if USE_CAMERA:
+            #     # cap = cv2.VideoCapture(camera_src) # for USB camera
+            #     cap = cv2.VideoCapture(
+            #         camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
+            # else:
+            #     cap = cv2.VideoCapture(video_src)
+            # ret, img = cap.read()
+
+        # orig_img = img
+        # TODO remove this
         while not ret:
-            ret, img = cap.read()
+            ret = True
+            img = jetson_video_source.Capture()
+            # ret, img = cap.read()
             # print('wait..')
-        img = cv2.resize(img, (proc_width, proc_height))
+
+        # img = cv2.resize(img, (proc_width, proc_height))
         # img = cv2.resize(img, (800, 604))
         height, width = img.shape[:2]
+        # process_img = jetson.utils.cudaImage(proc_width, proc_height)
+        # jetson.utils.cudaResize(img, process_img)
         # print(f'orig_img.shape = {orig_img.shape}')
 
-        if USE_GAMMA:
-            img = gamma(img, gamma=0.8)
+        # TODO with numpy
+        # if USE_GAMMA:
+        #     img = gamma(img, gamma=0.8)
 
         # give roi. Roi cuted upper part of frame
         up_bord = int(0.2*height)
-        img_c = img  # [up_bord:height, 0:width]
+        # TODO image cropping for roi
+        # img_c = img  # [up_bord:height, 0:width]
 
         # img_c = img_c[0:height, 0:int(width/5)]
 
-        height, width = img_c.shape[:2]
+        # height, width = img_c.shape[:2]
         # cv2.line(img, (0, up_bord), (width, up_bord), 255, 1)
 
         # frame_show only for display on interface with texts, rectangles and labels
-        frame_show = frame = img_c
+        # TODO understand this
+        frame_show = frame = jetson.utils.cudaToNumpy(img)
+        # frame_show = frame = img_c
         # separate frame_show to another object
         frame_show = np.copy(frame_show)
 
+        # TODO don't know if it is needed anymore
         # needs for cuda to add new one channel
-        img_c = cv2.cvtColor(img_c, cv2.COLOR_BGR2RGBA)  # ogiginal variant
+        # img_c = cv2.cvtColor(img_c, cv2.COLOR_BGR2RGBA)  # ogiginal variant
 
         
         ### DETECTION PHASE ###
-        
         #  each 2nd (5th?) frame will detect using Jetson inference
         if frm_number % detect_phase_period == 0:  # 5 - default
             # tss = time.time() # 56 w/o/ stdout on video
             '''!!!'''
             if not winMode:
-                frame_cuda = jetson.utils.cudaFromNumpy(img_c)
+                # TODO don't know if we need this
+                # frame_cuda = jetson.utils.cudaFromNumpy(img_c)
                 # tss = time.time() # 54 w/o/ stdout on video
                 # frame, width, height = camera.CaptureRGBA(zeroCopy = True)
                 '''!!!'''
-                detections = net.Detect(frame_cuda, width, height, overlay)
+                # TODO do we need width, height?
+                if USE_SEGMENTATION_NETWORK:
+                    buffers.Alloc(img.shape, img.format)
+                    net.Process(img)
+                    if buffers.mask:
+                        net.Mask(buffers.mask, filter_mode='linear')
+                    if buffers.overlay:
+                        net.Overlay(buffers.overlay, filter_mode='linear')
+                    frame_show = jetson.utils.cudaToNumpy(buffers.overlay)
+                    frame_show = np.copy(frame_show)
+                    mask = buffers.mask
+                else:
+                    detections = net.Detect(img, overlay=overlay)    # frame_cuda -> img
                 # for detection in detections:
                 #    if detection.ClassID == 3: # car in coco
                 #    print ('car detection confidence -', detection.Confidence)
                 '''!!!'''
+                # TODO we need this?
                 jetson.utils.cudaDeviceSynchronize()
             else:
                 detections = []
@@ -649,85 +781,91 @@ def proc():
             # tss = time.time() # 8-14 w/o/ stdout on video
 #            frame = cv2.cvtColor(frame.astype(np.uint8), cv2.COLOR_RGBA2RGB)
 
-            for detection in detections:
-                # print('  class', detection.Area, detection.ClassID)
-                # print('detection', detection)
-                x1 = int(detection.Left)
-                y1 = int(detection.Top)
-                x2 = int(detection.Right)
-                y2 = int(detection.Bottom)
-                bbox = (x1, y1, x2, y2)
-                
-                # if bbox_square(bbox) < max_bbox_sqare:
+            if USE_SEGMENTATION_NETWORK:
+                pass
+            else:
+                for detection in detections:
+                    # print('  class', detection.Area, detection.ClassID)
+                    # print('detection', detection)
+                    x1 = int(detection.Left)
+                    y1 = int(detection.Top)
+                    x2 = int(detection.Right)
+                    y2 = int(detection.Bottom)
+                    bbox = (x1, y1, x2, y2)
+
+                    # if bbox_square(bbox) < max_bbox_sqare:
+                        # print(f'bbox_square {bbox_square(bbox)}')
+
+                    if bbox_square(bbox) < max_bbox_sqare:
+                        continue
                     # print(f'bbox_square {bbox_square(bbox)}')
 
-                if bbox_square(bbox) < max_bbox_sqare:
-                    continue
-                # print(f'bbox_square {bbox_square(bbox)}')
+                    if detection.ClassID in CLASSES_EXTENDED:
+                        # conf = round(detection.Confidence,2)
+                        class_string = f'{CLASSES_EXTENDED[detection.ClassID]} - {detection.Confidence:.2f}'
+                    else:
+                        class_string = ('wtf?')
+                        continue  # go
 
-                if detection.ClassID in CLASSES_EXTENDED:
-                    # conf = round(detection.Confidence,2)
-                    class_string = f'{CLASSES_EXTENDED[detection.ClassID]} - {detection.Confidence:.2f}'
-                else:
-                    class_string = ('wtf?')
-                    continue  # go
+                    cv2.putText(frame_show, class_string, (x1+1, y1-4),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 1)
+                    cv2.rectangle(frame_show, (x1, y1), (x2, y2), green, 1)
+                    # if detection.ClassID == 3: # car in coco
+                    # print ('car detection confidence -', detection.Confidence)
+                    stop_ = False
 
-                cv2.putText(frame_show, class_string, (x1+1, y1-4),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, green, 1)
-                cv2.rectangle(frame_show, (x1, y1), (x2, y2), green, 1)
-                # if detection.ClassID == 3: # car in coco
-                # print ('car detection confidence -', detection.Confidence)
-                stop_ = False
-                # assign bbox to the track
-                for track in tracks:
-                    # if bbox intesect good with last bbox in the track
-                    # renew the track - delete tracker, append bbox to track,
-                    # start new tracker from this bbox
-                    iou_val = bb_intersection_over_union(bbox, track.boxes[-1])
-                    if iou_val > iou_tresh:
-                        # if bbox touches the frame borders, don't take it,
-                        # track builds wrong in this case
-                        stop_ = True  # prevent creating new track object
-                        if not bbox_touch_the_border(bbox, height, width):
-                            bboxes.append(bbox)
-                            track.renew(
-                                frame, bbox, detection.ClassID, detection.Confidence)
-                        else:
-                            # mark this track as completed, don't update it anymore
-                            track.complete = True
-                            # track.boxes = [] # no, exception in iou_val above
-                        break  # do not need do more with this bbox, go out
-                if stop_:
-                    break
-                # or, if bbox didn't assingned to any track, create a new track
-                tracks.append(Track(frame, bbox, new_tr_number,
-                                    detection.ClassID, detection.Confidence, warp_dimentions_px, 
-                                    calib_area_dimentions_m, M,))
-                new_tr_number += 1
-                if new_tr_number > 99:
-                    new_tr_number = 0
+                    # assign bbox to the track
+                    if TRACKS_ENABLED:
+                        for track in tracks:
+                            # if bbox intesect good with last bbox in the track
+                            # renew the track - delete tracker, append bbox to track,
+                            # start new tracker from this bbox
+                            iou_val = bb_intersection_over_union(bbox, track.boxes[-1])
+                            if iou_val > iou_tresh:
+                                # if bbox touches the frame borders, don't take it,
+                                # track builds wrong in this case
+                                stop_ = True        # prevent creating new track object
+                                if not bbox_touch_the_border(bbox, height, width):
+                                    bboxes.append(bbox)
+                                    track.renew(
+                                        frame, bbox, detection.ClassID, detection.Confidence)
+                                else:
+                                    # mark this track as completed, don't update it anymore
+                                    track.complete = True
+                                    # track.boxes = [] # no, exception in iou_val above
+                                break  # do not need do more with this bbox, go out
+                        if stop_:
+                            break
+                        # or, if bbox didn't assingned to any track, create a new track
+                        tracks.append(Track(frame, bbox, new_tr_number,
+                                            detection.ClassID, detection.Confidence, warp_dimentions_px,
+                                            calib_area_dimentions_m, M,))
+                        new_tr_number += 1
+                        if new_tr_number > MAX_TRACKS_NUM:
+                            new_tr_number = 0
 
 
         ### TRACKING PHASE ###
 
         # update tracks
-        else:
-            for track in tracks:
-                # update the tracker and grab the updated position
-                if not track.complete:
-                    track.update(frame)
-                    x1, y1, x2, y2 = track.boxes[-1]
+        elif TRACKS_ENABLED:
+                for track in tracks:
+                    # update the tracker and grab the updated position
+                    if not track.complete:
+                        track.update(frame)
+                        x1, y1, x2, y2 = track.boxes[-1]
 
-                    if track.class_id in CLASSES:
-                        # conf = round(detection.Confidence,2)
-                        class_string = f'{CLASSES[track.class_id]} - {track.confidence:.2f}'
-                    else:
-                        class_string = ('wtf?')
+                        if track.class_id in CLASSES:
+                            # conf = round(detection.Confidence,2)
+                            class_string = f'{CLASSES[track.class_id]} - {track.confidence:.2f}'
+                        else:
+                            class_string = ('unknown class')        # wtf was here
 
-                    cv2.putText(frame_show, class_string, (x1+1, y1-4),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, purple, 1)
-                    cv2.rectangle(frame_show, (x1, y1), (x2, y2), purple, 1)
+                        cv2.putText(frame_show, class_string, (x1+1, y1-4),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, purple, 1)
+                        cv2.rectangle(frame_show, (x1, y1), (x2, y2), purple, 1)
 
+        # ??
         wframe = frame  # .copy()
         # if web_is_on(): # если web работает копируем исходный фрейм для него
         # print('web', q_pict.qsize())
@@ -737,19 +875,22 @@ def proc():
         
         # remove frozen tracks and tracks with length less then 3 points and didn't updated 
         # for more then 3 secs or if detector cant find the car for more then 10 secs.
-        for track in tracks[:]:
-            now = time.time()
-            # if max track life time is over, or track isn't appended for more than 1 sec, del it
-            if (now - track.ts > max_track_lifetime) | \
-                ((now - track.ts > 3) & (len(track.boxes) < 3)) | \
-                 (now - track.renew_ts > 10) | \
-                 (abs(track.aver_speed) > 190):
-                if key_time != 0:  # when video capturing stops tracks don't delete
-                    tracks.remove(track)
+        if TRACKS_ENABLED:
+            for track in tracks[:]:
+                # TODO monotonic?
+                now = time.time()
+                # if max track life time is over, or track isn't appended for more than 1 sec, del it
+                if (now - track.ts > max_track_lifetime) | \
+                    ((now - track.ts > 3) & (len(track.boxes) < 3)) | \
+                     (now - track.renew_ts > 10) | \
+                     (abs(track.aver_speed) > 190):
+                    if key_time != 0:  # when video capturing stops tracks don't delete
+                        tracks.remove(track)
 
-        # draw tracks
-        for track in tracks:
-            track.draw_tracks(frame_show)
+            # draw tracks
+            for track in tracks:
+                track.draw_tracks(frame_show)
+
         # draw frame resolution
         '''!!!'''
         if not winMode:
@@ -785,7 +926,7 @@ def proc():
             # calculate polygones coordinates in scale
             ramki_scaled = []
             y_size, x_size = wframe.shape[:2]
-            if ("polygones") in polygones:
+            if "polygones" in polygones:
                 w_web, h_web = polygones["frame"]
                 for k, polygon in enumerate(polygones["polygones"]):
                     polygon_sc = [[x*x_size//w_web, y*y_size//h_web]
@@ -830,8 +971,9 @@ def proc():
             if stream_source_type != VideoStreamSources(settings['source_stream_type']):
                 stream_source_type = VideoStreamSources(settings['source_stream_type'])
                 construct_input_pipline(stream_source_type)
-                cap = cv2.VideoCapture(
-                    camera_str, cv2.CAP_GSTREAMER)
+                # TODO make cap available for jetson
+                # cap = cv2.VideoCapture(
+                #     camera_str, cv2.CAP_GSTREAMER)
 
             addrString[0] = 'https://' + settings["hub"] + '/detect'
             calibrPoints = json.loads(settings["calibration"])
@@ -853,57 +995,86 @@ def proc():
         # If any track point is inside the detecting zone - change it's state to On.
         # use shapely lib to calculate intersections of polygones (good lib)
         for i, ramka in enumerate(ramki_scaled):
-            ramka.color = 0  # for each ramka before iterate for frames, reset it
-            ramki_status[i] = 0
             # if some track below cross it, it will be in "on" state for whole frame.
-            for track in tracks:
-                if not track.complete:
-                    shapely_box = box(
-                        track.boxes[-1][0], track.boxes[-1][1], track.boxes[-1][2], track.boxes[-1][3])
-                    interscec_ = ramka.shapely_path.intersection(
-                        shapely_box).area/ramka.area*100
-                    if (interscec_ > iou_tresh_perc):
-                        # here need to check if track points are in detecting zone, and only then 
-                        # switch it on
-                        # iterate for points in track, check if point inside the zone
-                        for j in range(len(track.points)):
-                            point = track.points[len(track.points)-1-j]
-                            if Point(point).within(ramka.shapely_path):
-                                
-                                ### Change ramka status ###
+            if TRACKS_ENABLED:
+                ramka.color = 0  # for each ramka before iterate for frames, reset it
+                ramki_status[i] = 0
+                for track in tracks:
+                    if not track.complete:
+                        shapely_box = box(
+                            track.boxes[-1][0], track.boxes[-1][1], track.boxes[-1][2], track.boxes[-1][3])
+                        interscec_ = ramka.shapely_path.intersection(
+                            shapely_box).area/ramka.area*100
+                        if interscec_ > iou_tresh_perc:
+                            # here need to check if track points are in detecting zone, and only then
+                            # switch it on
+                            # iterate for points in track, check if point inside the zone
+                            for j in range(len(track.points)):
+                                point = track.points[len(track.points)-1-j]
+                                if Point(point).within(ramka.shapely_path):
+
+                                    ### Change ramka status ###
+                                    ramka.color = 1
+                                    ramki_status[i] = 1
+
+                                    ### Append track speed to ramka ###
+                                    # put average speed of track to the zone
+                                    # if flag obtaining status is False, and it's not the first track point
+                                    # then obtain status
+                                    if not track.status_obt and (len(track.points) > 3):
+
+                                        ### Average speed ###
+                                        ramka.status['avg_speed_1'].append(round(track.aver_speed))
+
+
+                                        ### Intense vehicles by types ###
+                                        # CLASSES = {6:"bus"(13), 3:"car"(1), 8:"truck"(2), 4:"motorcicle"}
+
+
+                                        if track.class_id == 3: # if car
+                                            ramka.status['avg_intens_1_tp']['1'].append(round(track.aver_speed))
+                                        elif track.class_id == 8: # if truck
+                                            ramka.status['avg_intens_1_tp']['2'].append(round(track.aver_speed))
+                                        elif track.class_id == 6: # if bus
+                                            ramka.status['avg_intens_1_tp']['13'].append(round(track.aver_speed))
+
+                                        # so, track status already obtained, do not do it twice
+                                        track.status_obt = True
+            else:
+                # ramka triggers on detection
+                try:
+                    if USE_SEGMENTATION_NETWORK:
+                        contours = get_contours_from_mask(jetson.utils.cudaToNumpy(mask))
+                        # frame_show = cv2.drawContours(frame_show, contours, -1, (0, 255, 0))
+                        ramka_prev_status = ramki_status[i]
+                        ramka.color = 0  # for each ramka before iterate for frames, reset it
+                        ramki_status[i] = 0
+                        for contour in contours:
+                            interscec_ = ramka.shapely_path.intersection(contour).area / ramka.area * 100
+                            if interscec_ > iou_tresh_perc:
                                 ramka.color = 1
                                 ramki_status[i] = 1
-                                
-                                ### Append track speed to ramka ###
-                                # put average speed of track to the zone 
-                                # if flag obtaining status is False, and it's not the first track point
-                                # then obtain status
-                                if not track.status_obt and (len(track.points) > 3):
+                                break
+                        if ramka_prev_status == 1 and ramki_status[i] == 0:
+                            ramka.status['avg_speed_1'].append(0)
 
-                                    ### Average spped ###
-                                    ramka.status['avg_speed_1'].append(round(track.aver_speed))
+                    else:
+                        for detection in detections:
+                            detection_square = (detection.Right - detection.Left) * (detection.Top - detection.Bottom)
+                            shapely_box = box(detection.Left, detection.Bottom, detection.Right, detection.Top)
+                            interscec_ = ramka.shapely_path.intersection(shapely_box).area / ramka.area * 100
+                            if interscec_ > iou_tresh_perc:
+                                    ramka.color = 1
+                                    ramki_status[i] = 1
 
-                                    
-                                    ### Intense vehicles by types ###
-                                    # CLASSES = {6:"bus"(13), 3:"car"(1), 8:"truck"(2), 4:"motorcicle"}
-                                                               
-                                    
-                                    if track.class_id == 3: # if car
-                                        ramka.status['avg_intens_1_tp']['1'].append(round(track.aver_speed))
-                                    elif track.class_id == 8: # if truck
-                                        ramka.status['avg_intens_1_tp']['2'].append(round(track.aver_speed))
-                                    elif track.class_id == 6: # if bus
-                                        ramka.status['avg_intens_1_tp']['13'].append(round(track.aver_speed))
-
-                                    # so, track status already obtained, do not do it twice
-                                    track.status_obt = True
-
-                # if track                     
+                except NameError:
+                    pass
 
             ### Calculate time in zone ###
             if (ramka.color == 1) and (ramka.trig == False):
                 ramka.ts = time.time()
                 ramka.trig = True
+
             if (ramka.trig == True) and (ramka.color == 0):
                 ramka.status['cur_time_in_zone'] = round((time.time() - ramka.ts), 1)
                 ramka.status['times_in_zone_1'].append(ramka.status['cur_time_in_zone'])
@@ -928,6 +1099,7 @@ def proc():
                 if ramka.directions[j] == 1:
                     cv2.polylines(frame_show, np.array(
                         [ramka.arrows_path[j]]), 1, color_, 2)
+
             # draw ramki sides distances from the calibration polygone in meters
             cv2.putText(frame_show, f'{ramka.up_limit_y_m:.1f}', ramka.up_side_center,
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, white, 1)
@@ -1019,7 +1191,7 @@ def proc():
 
         if visual:
             # img = cv2.resize(img, (800, 600))
-            frame_str = f'{int(tpf_midle)} ms/f tr-{len(tracks)} ' + \
+            frame_str = f'{int(tpf_midle)} ms/f tr-{len(tracks) if TRACKS_ENABLED else None} ' + \
                         f'{width}x{height} fps{fps} {network}'
             cv2.putText(frame_show, frame_str, (15, 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
@@ -1033,6 +1205,9 @@ def proc():
                 cv2.imshow("warped", warped_img)
 
             # put the picture for web in the picture Queue
+
+            frame_show = cv2.resize(frame_show, (w_web, h_web))
+            # jetson.utils.cudaResize(frame_show, (w_web, h_web))
             put_queue(q_pict, frame_show)
             # fix_this
             key = 0
@@ -1040,25 +1215,27 @@ def proc():
             # if the `ESC` key was pressed, break from the loop
             if key == 27:
                 break
-            if key == ord("p"):
+            elif key == ord("p"):
                 key_time = 0
-            if key == ord("o"):
+            elif key == ord("o"):
                 key_time = 1
-            if key == ord("t"):
+            elif key == ord("t") and TRACKS_ENABLED:
                 tracks = []  # kill all tracks pressing d
+
         if frm_number % 10 == 0:
-            print(f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks)}')
-            pass
+            print(
+                f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks) if TRACKS_ENABLED else "disabled"}'
+            )
 
         # if memmon:
         #     print("[ Top 10 ]")
         #     for stat in top_stats[:10]:
         #         print(stat)
 
-    cap.release()
-    cap2.release()
+    # cap.release()
+    # cap2.release()
     cv2.destroyAllWindows()
 
 
-# if __name__ == "__main__":
-    # proc()
+if __name__ == "__main__":
+    proc()
