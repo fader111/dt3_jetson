@@ -84,7 +84,7 @@ coco_networks = [
 network = coco_networks[2]
 
 if USE_SEGMENTATION_NETWORK:
-    network = 'fcn-resnet18-cityscapes'
+    network = 'fcn-resnet18-cityscapes-1024x512'
 
 threshold = 0.2         # 0.2 for jetson inference object detection
 # tresh for cnn detection bbox and car detecting zone intersection in percents
@@ -761,9 +761,19 @@ def proc():
                         net.Mask(buffers.mask, filter_mode='linear')
                     if buffers.overlay:
                         net.Overlay(buffers.overlay, filter_mode='linear')
-                    frame_show = jetson.utils.cudaToNumpy(buffers.overlay)
+
+                    bgr_overlay = jetson.utils.cudaAllocMapped(
+                        width=buffers.overlay.width, height=buffers.overlay.height, format='bgr8'
+                    )
+                    jetson.utils.cudaConvertColor(buffers.overlay, bgr_overlay)
+                    bgr_mask = jetson.utils.cudaAllocMapped(
+                        width=buffers.mask.width, height=buffers.mask.height, format='bgr8'
+                    )
+                    jetson.utils.cudaConvertColor(buffers.mask, bgr_mask)
+
+                    frame_show = jetson.utils.cudaToNumpy(bgr_overlay)
                     frame_show = np.copy(frame_show)
-                    mask = buffers.mask
+                    mask = bgr_mask
                 else:
                     detections = net.Detect(img, overlay=overlay)    # frame_cuda -> img
                 # for detection in detections:
