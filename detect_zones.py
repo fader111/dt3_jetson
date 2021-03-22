@@ -1,4 +1,7 @@
 ''' Ramka - class for detect zones'''
+
+from typing import List, Union
+
 import time
 # import threading
 from shapely.geometry import Point, Polygon, box
@@ -12,8 +15,141 @@ green = (0, 255, 0)
 red = (0, 0, 255)
 purple = (255, 0, 255)
 
+"""
+    What this class can do?
+        - we have some coordinates of Ramka
+        - coordinates discribe points on a plane
+        - polygon may not be convex (ie may be concave)
+        - Ramka can be activated or not
+        - if activated Ramka can have some class in it
+        - Ramka has color
+        - if activated Ramka can change color
+        - Ramka can have size (in real values (meters etc))
+        
+    Q:
+        - do we need to use shapely for geometry?
+        - which transformations do we apply?
+        - which methods do we use for activation of ramka
+        - what about time counting?
+        
+"""
+class BasicRamka:
+    """
+        We must syncronize np.path and shapely_path
+    """
+    path_type = Union[np.ndarray, List[List[int]]]
 
-class Ramka:
+    def __init__(self, path: path_type):
+        self.path = path
+
+        self.shapely_center = Point(0., 0.)
+        self.np_center = np.asarray(self.shapely_center, dtype=np.int)
+        self.__center_changed = True
+
+        self.__area = 0.
+        self.__area_changed = True
+
+        self.activated = False
+
+    def __assert_path(self):
+        # check if path closed and convert it to open
+        if (self.__path[0] == self.__path[-1]).all():
+            self.__path = self.__path[:-1]
+
+        # check that we working with planar paths
+        if self.__path.shape[-1] != 2 and self.__path.shape[0] < 3:
+            raise Exception(f'class {self.__class__.__name__} can work only with planar paths')
+
+        # check if path type is int
+        if not np.issubdtype(self.__path.dtype, np.integer):
+            raise Exception(f"{self.__class__.__name__} can't work with non-integer paths")
+
+        # check that all points are not on the same line
+        # determinant = np.hstack((np.ones((self.__path.shape[0],1), dtype=np.int), self.__path))
+        # if np.linalg.det(determinant) == 0.:
+        #     raise Exception(f"{self.__class__.__name__} all path points can't lay on a line")
+
+        # TODO check if path is not self-interacting
+
+    @property
+    def path(self) -> np.ndarray:
+        return self.__path
+
+    @path.setter
+    def path(self, path: path_type) -> None:
+        self.__path = np.array(path)
+        self.__assert_path()
+
+        self.shapely_path = Polygon(path)
+        self.__center_changed = True
+        self.__area_changed = True
+
+    @property
+    def center(self) -> np.ndarray:
+        if self.__center_changed:
+            # using poly centroid as figure center that is not accurate in some concave cases
+            self.shapely_center = self.shapely_path.centroid
+            self.np_center = np.asarray(self.shapely_center, dtype=np.int)
+            self.__center_changed = False
+
+        return self.np_center
+
+    @property
+    def area(self) -> float:
+        if self.__area_changed:
+            self.__area = self.shapely_path.area
+            self.__area_changed = False
+        return  self.__area
+
+    def activate(self):
+        self.activated = True
+
+    def deactivate(self):
+        self.activated = False
+
+    def is_activated(self):
+        return self.activated
+
+    # debug function to draw paths in opencv
+    def draw_path(self):
+        """
+            TODO
+            size -> size of window may be None
+        """
+        pass
+
+    # deprecated
+    def center_calc(self):
+        '''
+            calc center of path to put zone number there
+            available only for 4 sides poly
+        '''
+        if not self.path.shape[0] != 4:
+            raise Exception("can't use this method to calculate center of polygon with more or less than 4 sides")
+
+        x1 = self.path[0][0]
+        y1 = self.path[0][1]
+        x2 = self.path[1][0]
+        y2 = self.path[1][1]
+        x3 = self.path[2][0]
+        y3 = self.path[2][1]
+        x4 = self.path[3][0]
+        y4 = self.path[3][1]
+
+        x12 = (x1 + x2) / 2
+        x34 = (x3 + x4) / 2
+        y23 = (y2 + y3) / 2
+        y41 = (y4 + y1) / 2
+
+        return round((x12+x34)/2), round((y23+y41)/2)
+
+class PedestrianRamka(BasicRamka):
+    pass
+
+"""
+    - VehicleRamka can have directions
+"""
+class VehicleRamka(BasicRamka):
     '''has path, color, shapely state fields'''
     # need to delete state = 0               # state of polygon On/Off
     # arrows graphical path of this polygon.[[[x,y],[x,y],[x,y]], [..], [..]]]
@@ -22,7 +158,8 @@ class Ramka:
     color = blue
     types = {"13": 0, "2": 0, "1": 0} # vehicle types
 
-    def __init__(self, path, warp_dimentions_px, calib_area_dimentions_m, M, directions=[0, 0, 0, 0], h=600):
+    # TODO remove h from api
+    def __init__(self, path, warp_dimentions_px, calib_area_dimentions_m, M, directions=None, h=600):
         ''' initiate polygones when they changes on server 
             path = [[x,y],[x,y],[x,y],[x,y]],
             warp_dimentions_px,                 # width, height Top view of calibration zone
@@ -31,41 +168,48 @@ class Ramka:
             directions = [0,0,0,0],             # 0 - direction dont set, 1 - set
             h                                   # process window height
         '''
-        self.path = path
-        self.h = h  # frame height in web
-        self.directions = directions
+        super().__init__(path)
+        # self.path -> np path
+        # self.shapely_path -> shapely path
+        # self.center -> np center
+        # self.area -> float
+
+        # TODO remove h
+        # self.h = h  # frame height in web
+        if directions is None:
+            self.directions = [False] * 4
+        else:
+            self.directions = list(map(bool, directions))
 
         # status dictionary for avg speed intensity and others
         self.status = {
-            'avg_speed_1': [],   # last one minute avg speed, appends by each track.
+            'avg_speed_1': [],      # last minute avg speed, appends by each track
 
             'avg_speed_15': 0,      # average speed measured by sliding window 15 min interval
             'avg_speed_60': 0,      # same for 60 min interval
-            'speeds_60': [],        # average speed samples during 1 hour ( 60 items)
+            'speeds_60': [],        # average speed samples during 1 hour (60 items)
             
             'avg_intens_15': 0,     # average intensity for 15 min interval 
             'avg_intens_60': 0,     # average intensity for 60 min interval 
-            'intenses_60': [],      # intensity for 60 min sliding window interval (60 items )
+            'intenses_60': [],      # intensity for 60 min sliding window interval (60 items)
 
-            'avg_intens_1_tp' : {"13": [], "2": [], "1": []},     # average intensity by types for 1 min interval
-            'avg_intens_15_tp': {"13": 0, "2": 0, "1": 0},     # average intensity by types for 15 min interval
-            'avg_intens_60_tp': {"13": 0, "2": 0, "1": 0},     # average intensity by types for 60 min interval 
-            'intenses_60_tp': {"13": [], "2": [], "1": []},    # intensity by types for 60 min interval (60 items )
+            'avg_intens_1_tp': {"13": [], "2": [], "1": []},        # average intensity by types for 1 min interval
+            'avg_intens_15_tp': {"13": 0, "2": 0, "1": 0},          # average intensity by types for 15 min interval
+            'avg_intens_60_tp': {"13": 0, "2": 0, "1": 0},          # average intensity by types for 60 min interval
+            'intenses_60_tp': {"13": [], "2": [], "1": []},         # intensity by types for 60 min interval (60 items)
 
-            'cur_time_in_zone':0,   # how much time car stays in detection zone, duration in sec             
-            'times_in_zone_1':[],   # cur_time_in_zone values massiv of 1 minute             
-            'times_in_zone_60':[],  # mass with times in 60 min for sliding window
-            'avg_time_in_zone_15':0,# average average time in zone during 15 min ( 15 items)
-            'avg_time_in_zone_60':0 # average average time in zone during 1 hour ( 60 items)
+            'cur_time_in_zone': 0,           # how much time car stays in detection zone, duration in sec
+            'times_in_zone_1': [],           # cur_time_in_zone values array of 1 minute
+            'times_in_zone_60': [],          # mass with times in 60 min for sliding window
+            'avg_time_in_zone_15': 0,        # average average time in zone during 15 min (15 items)
+            'avg_time_in_zone_60': 0         # average average time in zone during 1 hour (60 items)
         }
 
-        # self.stopped = None # look at setInterval
-        self.trig = False # trigger for time in ramka measurement process
-        self.shapely_path = Polygon(path)
-        self.center = self.center_calc(path)
-        self.arrows_path = self.arrows_path_calc(path, h)
-        self.area = round(self.shapely_path.area)
-        self.up_down_side_center_calc()
+        self.__triggered = False        # trigger for time in ramka measurement process
+        self.__start_time = None
+
+        self.arrows_path = self.arrows_path_calc(path, h)       # for dt
+        self.up_down_side_center_calc()     # for dt
         self.warped_width_px, self.warped_height_px = warp_dimentions_px
         self.calib_area_width_m, self.calib_area_length_m = calib_area_dimentions_m
         # центр верхнего края рамки в формате нужном для трансформации в Top View
@@ -98,31 +242,24 @@ class Ramka:
         self.stop = function() # self.stop is threading.Event object
         '''
 
-    def center_calc(self, path):
-        ''' calc center of path to put zone number there
-        '''
-        x1 = path[0][0]         # polygon coordinates
-        y1 = path[0][1]
-        x2 = path[1][0]
-        y2 = path[1][1]
-        x3 = path[2][0]
-        y3 = path[2][1]
-        x4 = path[3][0]
-        y4 = path[3][1]
+    def triggered(self) -> bool:
+        return self.__triggered
 
-        x12 = (x1 + x2) / 2     # center projection coordinates
-        x23 = (x2 + x3) / 2
-        x34 = (x3 + x4) / 2
-        x41 = (x4 + x1) / 2
-        y12 = (y1 + y2) / 2
-        y23 = (y2 + y3) / 2
-        y34 = (y3 + y4) / 2
-        y41 = (y4 + y1) / 2
-        return round((x12+x34)/2), round((y23+y41)/2)
-        # return ((x12+x34)/2), ((y23+y41)/2)
+    def start_time_measuremnet(self):
+        self.__start_time = time.time()
+        self.__triggered = True
+
+    def stop_time_measurement(self):
+        overall_time = time.time() - self.__start_time
+        self.status['cur_time_in_zone'] = overall_time
+        self.status['times_in_zone_1'].append(overall_time)
+
+        self.__triggered = False
+        self.__start_time = None
 
     def up_down_side_center_calc(self):
-        """ calc zone up side center point. Its y coord use for speed calc
+        """
+            calc zone up side center point. Its y coord use for speed calc
             coords in pixels on the perspective view
         """
         p1, p2, p3, p4 = self.path
@@ -313,9 +450,28 @@ class Ramka:
         self.status['avg_speed_1'] = []
         # print(
             # "                                                   self.status['avg_speed_15']", self.status['avg_speed_15'])
-           
-'''
-test_path = [[0,0], [5,30], [35,33], [40,10]]
-ramka = Ramka(test_path)
-print (ramka.area, ramka.center )
-'''
+
+if __name__ == '__main__':
+    # check List, ndarray paths
+    # check integer only
+    # check closed, unclosed paths
+    good_paths = [
+        [[0, 0], [5, 30], [35, 33], [40, 10]],
+        np.array([[0, 1], [2,3], [4, 5]])
+    ]
+    bad_paths = [
+        [[0, 0], [1, 1], [2, 2.]],
+        [[0., 0.], [1., 1.], [2, 2.]]
+    ]
+
+    for path in good_paths:
+        ramka = BasicRamka(path)
+    for path in bad_paths:
+        try:
+            ramka = BasicRamka(path)
+        except Exception:
+            pass
+        else:
+            raise Exception("assertion failed")
+
+    # print (ramka.area, ramka.center)

@@ -27,7 +27,7 @@ from iou import bb_intersection_over_union
 from track_dlib import Track
 # from dlib import correlation_tracker
 from shapely.geometry import Point, Polygon, box
-from detect_zones import Ramka
+from detect_zones import VehicleRamka
 from transform import four_point_transform, order_points2, windowToFieldCoordinates
 from common_tracker import setInterval
 from pprint import pprint
@@ -84,7 +84,12 @@ coco_networks = [
 network = coco_networks[2]
 
 if USE_SEGMENTATION_NETWORK:
-    network = 'fcn-resnet18-cityscapes-1024x512'
+    segmentation_networks = [
+        'fcn-resnet18-cityscapes-512x256',
+        'fcn-resnet18-cityscapes-1024x512',
+        'fcn-resnet18-cityscapes-2048x1024'
+    ]
+    network = segmentation_networks[0]
 
 threshold = 0.2         # 0.2 for jetson inference object detection
 # tresh for cnn detection bbox and car detecting zone intersection in percents
@@ -606,13 +611,13 @@ def proc():
                           for x, y in polygon]
             # scaled means fitted to web view
             ramki_scaled.append(
-                Ramka(polygon_sc,                         # scaled polygon vertex
-                      warp_dimentions_px,                 # width, height Top view of calibration zone
-                      calib_area_dimentions_m,            # width, height of calibration zone in meter
-                      M,                                  # transition matrix
-                      polygones["ramkiDirections"][k],    # directions
-                      proc_height                         # CNN process window hight
-                      ))
+                VehicleRamka(polygon_sc,                            # scaled polygon vertex
+                             warp_dimentions_px,                    # width, height Top view of calibration zone
+                             calib_area_dimentions_m,               # width, height of calibration zone in meter
+                             M,                                     # transition matrix
+                             polygones["ramkiDirections"][k],       # directions
+                             proc_height                            # CNN process window hight
+                             ))
     # ramki_scaled
     # calculation distanses of up and down side of detecting areas
 
@@ -668,19 +673,14 @@ def proc():
         # just for profiling
         tick()
 
-        # if memmon:
-        #   snapshot = tracemalloc.take_snapshot()
-        #   top_stats = snapshot.statistics('lineno')
-        #   wdt_tmr.cancel()# отключено на время отладки
-        #   wdt_tmr = Timer(10, wdt_func)# отключено на время отладки
-        #   wdt_tmr.start()# отключено на время отладки
-
         frm_number += 1
         # TODO maybe change to monotonic
         tss = time.time()  # 90 ms , 60 w/o/ stdout
+
         # TODO remove ret
         ret = True
         img = jetson_video_source.Capture()
+
         # ret, img = cap.read()
         # tss= time.time() #78 ms
 
@@ -758,9 +758,9 @@ def proc():
                     buffers.Alloc(img.shape, img.format)
                     net.Process(img)
                     if buffers.mask:
-                        net.Mask(buffers.mask, filter_mode='linear')
+                        net.Mask(buffers.mask, filter_mode='point')
                     if buffers.overlay:
-                        net.Overlay(buffers.overlay, filter_mode='linear')
+                        net.Overlay(buffers.overlay, filter_mode='point')
 
                     bgr_overlay = jetson.utils.cudaAllocMapped(
                         width=buffers.overlay.width, height=buffers.overlay.height, format='bgr8'
@@ -943,13 +943,13 @@ def proc():
                                   for x, y in polygon]
                     
                     ramki_scaled.append(
-                        Ramka(polygon_sc,                       # scaled polygon vertex
-                            warp_dimentions_px,                 # width, height Top view of calibration zone
-                            calib_area_dimentions_m,            # width, height of calibration zone in meter
-                            M,                                  # transition matrix
-                            polygones["ramkiDirections"][k],    # directions
-                            proc_height                         # CNN process window hight
-                            ))
+                        VehicleRamka(polygon_sc,                            # scaled polygon vertex
+                                     warp_dimentions_px,                    # width, height Top view of calibration zone
+                                     calib_area_dimentions_m,               # width, height of calibration zone in meter
+                                     M,                                     # transition matrix
+                                     polygones["ramkiDirections"][k],       # directions
+                                     proc_height                            # CNN process window hight
+                                     ))
                     
             # dlym = ramki_scaled[2].down_limit_y_m
             # print(f'ramki scaled {ramki_scaled}')
@@ -1081,14 +1081,11 @@ def proc():
                     pass
 
             ### Calculate time in zone ###
-            if (ramka.color == 1) and (ramka.trig == False):
-                ramka.ts = time.time()
-                ramka.trig = True
+            if (ramka.color == 1) and not ramka.triggered():
+                ramka.start_time_measuremnet()
 
-            if (ramka.trig == True) and (ramka.color == 0):
-                ramka.status['cur_time_in_zone'] = round((time.time() - ramka.ts), 1)
-                ramka.status['times_in_zone_1'].append(ramka.status['cur_time_in_zone'])
-                ramka.trig = False
+            if ramka.triggered() and (ramka.color == 0):
+                ramka.stop_time_measurement()
             
                         
         # Draw polygones with arrows
@@ -1106,7 +1103,7 @@ def proc():
             # draw arrows
             # for j, arrow in enumerate(poly):
             for j in range(4):
-                if ramka.directions[j] == 1:
+                if ramka.directions[j]:
                     cv2.polylines(frame_show, np.array(
                         [ramka.arrows_path[j]]), 1, color_, 2)
 
