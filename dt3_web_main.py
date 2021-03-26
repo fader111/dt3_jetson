@@ -131,6 +131,12 @@ def sendSettingsToServer():
         gateway = request.form["gateway"]
         hub = request.form["hub"]
         calibPoly = request.form['calibration']
+        # fast fix
+        calibPoly = calibPoly.replace('[', '')
+        calibPoly = calibPoly.replace(']', '')
+        calibPoly = list(map(int, calibPoly.split(',')))
+        calibPoly = str([[x,y] for x,y in zip(calibPoly[::2],calibPoly[1::2])])
+
         calib_zone_length = request.form['calib_zone_length']
         calib_zone_width = request.form['calib_zone_width']
         source_stream_type = request.form['source_stream_type']
