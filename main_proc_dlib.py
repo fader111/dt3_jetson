@@ -6,6 +6,9 @@ import enum
 import pathlib
 import telnetlib
 
+from colors import Colors
+from vehicle_types import VehicleTypes
+
 from threading import Timer, Thread, Lock
 from multiprocessing.dummy import Process, Queue
 # from multiprocessing import Process, Queue
@@ -89,6 +92,11 @@ if USE_SEGMENTATION_NETWORK:
         'fcn-resnet18-cityscapes-1024x512',
         'fcn-resnet18-cityscapes-2048x1024'
     ]
+    color_to_vehicle_type_map = {
+        Colors.RED: VehicleTypes.CAR,
+        Colors.GREEN: VehicleTypes.TRUCK,
+        Colors.BLUE: VehicleTypes.BUS
+    }
     network = segmentation_networks[0]
 
 threshold = 0.2         # 0.2 for jetson inference object detection
@@ -615,9 +623,12 @@ def proc():
                              warp_dimentions_px,                    # width, height Top view of calibration zone
                              calib_area_dimentions_m,               # width, height of calibration zone in meter
                              M,                                     # transition matrix
+                             color_to_vehicle_type_map,
+                             iou_tresh,
                              polygones["ramkiDirections"][k],       # directions
                              proc_height                            # CNN process window hight
-                             ))
+                             )
+            )
     # ramki_scaled
     # calculation distanses of up and down side of detecting areas
 
@@ -947,14 +958,17 @@ def proc():
                                      warp_dimentions_px,                    # width, height Top view of calibration zone
                                      calib_area_dimentions_m,               # width, height of calibration zone in meter
                                      M,                                     # transition matrix
+                                     color_to_vehicle_type_map,
+                                     iou_tresh,
                                      polygones["ramkiDirections"][k],       # directions
                                      proc_height                            # CNN process window hight
-                                     ))
+                                     )
+                    )
                     
             # dlym = ramki_scaled[2].down_limit_y_m
             # print(f'ramki scaled {ramki_scaled}')
             # print(f'ramki directions {ramki_directions} type-{type(ramki_directions)}')
-            ramki_status = [0 for i in range(len(ramki_scaled))]
+            ramki_status = [0] * len(ramki_scaled)
             # when lenght ramki_status changed do below, can't remove ramki_status_ object,
             # because need to save it's reference fo repeated timer
             while len(ramki_status_) > len(ramki_status):
@@ -1007,7 +1021,7 @@ def proc():
         for i, ramka in enumerate(ramki_scaled):
             # if some track below cross it, it will be in "on" state for whole frame.
             if TRACKS_ENABLED:
-                ramka.color = 0  # for each ramka before iterate for frames, reset it
+                # ramka.color = 0     # TODO not working after Ramka rewrite # for each ramka before iterate for frames, reset it
                 ramki_status[i] = 0
                 for track in tracks:
                     if not track.complete:
@@ -1024,7 +1038,7 @@ def proc():
                                 if Point(point).within(ramka.shapely_path):
 
                                     ### Change ramka status ###
-                                    ramka.color = 1
+                                    # ramka.color = 1     # TODO not working after Ramka rewrite
                                     ramki_status[i] = 1
 
                                     ### Append track speed to ramka ###
@@ -1054,19 +1068,20 @@ def proc():
                 # ramka triggers on detection
                 try:
                     if USE_SEGMENTATION_NETWORK:
-                        contours = get_contours_from_mask(jetson.utils.cudaToNumpy(mask))
+                        ramka.segmentation_recognize(jetson.utils.cudaToNumpy(mask))
+                        # contours = get_contours_from_mask(jetson.utils.cudaToNumpy(mask))
                         # frame_show = cv2.drawContours(frame_show, contours, -1, (0, 255, 0))
-                        ramka_prev_status = ramki_status[i]
-                        ramka.color = 0  # for each ramka before iterate for frames, reset it
-                        ramki_status[i] = 0
-                        for contour in contours:
-                            interscec_ = ramka.shapely_path.intersection(contour).area / ramka.area * 100
-                            if interscec_ > iou_tresh_perc:
-                                ramka.color = 1
-                                ramki_status[i] = 1
-                                break
-                        if ramka_prev_status == 1 and ramki_status[i] == 0:
-                            ramka.status['avg_speed_1'].append(0)
+                        # ramka_prev_status = ramki_status[i]
+                        # ramka.color = 0  # for each ramka before iterate for frames, reset it
+                        # ramki_status[i] = 0
+                        # for contour in contours:
+                        #     interscec_ = ramka.shapely_path.intersection(contour).area / ramka.area * 100
+                        #     if interscec_ > iou_tresh_perc:
+                        #         ramka.color = 1
+                        #         ramki_status[i] = 1
+                        #         break
+                        # if ramka_prev_status == 1 and ramki_status[i] == 0:
+                        #     ramka.status['avg_speed_1'].append(0)
 
                     else:
                         for detection in detections:
@@ -1074,38 +1089,40 @@ def proc():
                             shapely_box = box(detection.Left, detection.Bottom, detection.Right, detection.Top)
                             interscec_ = ramka.shapely_path.intersection(shapely_box).area / ramka.area * 100
                             if interscec_ > iou_tresh_perc:
-                                    ramka.color = 1
+                                    # ramka.color = 1
                                     ramki_status[i] = 1
 
                 except NameError:
                     pass
 
             ### Calculate time in zone ###
-            if (ramka.color == 1) and not ramka.triggered():
+            if ramka.is_activated() and not ramka.triggered():
                 ramka.start_time_measuremnet()
 
-            if ramka.triggered() and (ramka.color == 0):
+            if ramka.triggered() and not ramka.is_activated():
                 ramka.stop_time_measurement()
             
                         
         # Draw polygones with arrows
         for i, ramka in enumerate(ramki_scaled):
-            color_ = green if ramka.color == 1 else blue
+            color_ = green if ramka.is_activated() else blue
 
             # draw zone number & current time in zone
             # cv2.putText(frame_show, str(i+1)+' '+str(ramka.status['cur_time_in_zone']), (ramka.center[0]-5, ramka.center[1]+5),
             cv2.putText(frame_show, str(i+1)+' ', (ramka.center[0]-5, ramka.center[1]+5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_, 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, ramka.get_bgr_color(), 2)
             
             # draw polygones
-            cv2.polylines(frame_show, np.array(
-                [ramka.path], np.int32), 1, color_, 2)
+            # cv2.polylines(frame_show, np.array(
+            #     [ramka.path], np.int32), 1, color_, 2)
+            cv2.polylines(frame_show, ramka.path.reshape(1, *ramka.path.shape), 1, ramka.get_bgr_color(), 2)
+
             # draw arrows
             # for j, arrow in enumerate(poly):
             for j in range(4):
                 if ramka.directions[j]:
                     cv2.polylines(frame_show, np.array(
-                        [ramka.arrows_path[j]]), 1, color_, 2)
+                        [ramka.arrows_path[j]]), 1, ramka.get_bgr_color(), 2)
 
             # draw ramki sides distances from the calibration polygone in meters
             cv2.putText(frame_show, f'{ramka.up_limit_y_m:.1f}', ramka.up_side_center,

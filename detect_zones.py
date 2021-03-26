@@ -1,6 +1,10 @@
 ''' Ramka - class for detect zones'''
 
-from typing import List, Union
+from collections import OrderedDict
+from typing import List, Union, Tuple
+
+from colors import Colors, colors_to_bgr_map
+from vehicle_types import VehicleTypes
 
 import time
 # import threading
@@ -21,17 +25,16 @@ purple = (255, 0, 255)
         - coordinates discribe points on a plane
         - polygon may not be convex (ie may be concave)
         - Ramka can be activated or not
-        - if activated Ramka can have some class in it
         - Ramka has color
         - if activated Ramka can change color
         - Ramka can have size (in real values (meters etc))
-        
     Q:
         - do we need to use shapely for geometry?
         - which transformations do we apply?
         - which methods do we use for activation of ramka
         - what about time counting?
-        
+    TODO:
+        - restrict to use black color for mask     
 """
 class BasicRamka:
     """
@@ -39,7 +42,7 @@ class BasicRamka:
     """
     path_type = Union[np.ndarray, List[List[int]]]
 
-    def __init__(self, path: path_type):
+    def __init__(self, path: path_type, threshold: float, default_color:Colors=Colors.BLACK):
         self.path = path
 
         self.shapely_center = Point(0., 0.)
@@ -50,6 +53,12 @@ class BasicRamka:
         self.__area_changed = True
 
         self.activated = False
+
+        self.threshold = float(threshold)
+
+        self.__color = None
+        self.default_color = default_color
+        self.set_color(default_color)
 
     def __assert_path(self):
         # check if path closed and convert it to open
@@ -71,6 +80,23 @@ class BasicRamka:
 
         # TODO check if path is not self-interacting
 
+    def __get_indexes_in_frame(self):
+        if self.path.shape[0] != 4:
+            raise NotImplementedError("Can get indexes only for parallelogramms")
+
+        minx, miny, maxx, maxy = tuple(map(int, self.shapely_path.bounds))
+        all_possible_coords = np.mgrid[minx:maxx + 1, miny:maxy + 1].reshape(2, -1).T
+
+        p_points = np.repeat(all_possible_coords, 8, axis=0)
+        qi_points = np.repeat(self.path, 2, axis=0)
+        qi_points = np.append(qi_points[1:], [qi_points[0]], axis=0)
+        qi_points = np.tile(qi_points, (all_possible_coords.shape[0], 1))
+        determinants_matrices = np.reshape(p_points - qi_points, (-1, 4, 2, 2))
+        determinants = np.linalg.det(determinants_matrices)
+
+        mask = (np.sum(determinants >= 0, axis=1) == 4) | (np.sum(determinants <= 0, axis=1) == 4)
+        self.pixel_indices_inside_path = all_possible_coords[mask]
+
     @property
     def path(self) -> np.ndarray:
         return self.__path
@@ -83,6 +109,7 @@ class BasicRamka:
         self.shapely_path = Polygon(path)
         self.__center_changed = True
         self.__area_changed = True
+        self.__get_indexes_in_frame()
 
     @property
     def center(self) -> np.ndarray:
@@ -101,6 +128,17 @@ class BasicRamka:
             self.__area_changed = False
         return  self.__area
 
+    @property
+    def color(self) -> Colors:
+        return self.__color
+
+    @color.setter
+    def color(self, color: Colors):
+        self.__color = color
+
+    def get_bgr_color(self) -> Tuple[int, int, int]:
+        return colors_to_bgr_map[self.__color]
+
     def activate(self):
         self.activated = True
 
@@ -109,6 +147,9 @@ class BasicRamka:
 
     def is_activated(self):
         return self.activated
+
+    def set_color(self, color:Colors):
+        self.__color = color
 
     # debug function to draw paths in opencv
     def draw_path(self):
@@ -148,6 +189,7 @@ class PedestrianRamka(BasicRamka):
 
 """
     - VehicleRamka can have directions
+    - if activated VehicleRamka can have some class in it
 """
 class VehicleRamka(BasicRamka):
     '''has path, color, shapely state fields'''
@@ -155,11 +197,13 @@ class VehicleRamka(BasicRamka):
     # arrows graphical path of this polygon.[[[x,y],[x,y],[x,y]], [..], [..]]]
     arrows = []
     ramki_directions = []
-    color = blue
     types = {"13": 0, "2": 0, "1": 0} # vehicle types
 
     # TODO remove h from api
-    def __init__(self, path, warp_dimentions_px, calib_area_dimentions_m, M, directions=None, h=600):
+    def __init__(
+            self, path, warp_dimentions_px, calib_area_dimentions_m, M, colors_to_vehicles_types_map, threshold,
+            directions=None, h=600
+    ):
         ''' initiate polygones when they changes on server 
             path = [[x,y],[x,y],[x,y],[x,y]],
             warp_dimentions_px,                 # width, height Top view of calibration zone
@@ -168,7 +212,10 @@ class VehicleRamka(BasicRamka):
             directions = [0,0,0,0],             # 0 - direction dont set, 1 - set
             h                                   # process window height
         '''
-        super().__init__(path)
+        super().__init__(path, threshold)
+        self.colors_to_vehicles_types_map = colors_to_vehicles_types_map
+        self.vehicles_types_to_colors = {v: k for k,v in self.colors_to_vehicles_types_map.items()}
+
         # self.path -> np path
         # self.shapely_path -> shapely path
         # self.center -> np center
@@ -180,6 +227,11 @@ class VehicleRamka(BasicRamka):
             self.directions = [False] * 4
         else:
             self.directions = list(map(bool, directions))
+
+        self.__triggered = False        # trigger for time in ramka measurement process
+        self.__start_time = None
+        self.__masks = None
+        self.bbox = tuple(map(int, self.shapely_path.bounds))
 
         # status dictionary for avg speed intensity and others
         self.status = {
@@ -204,9 +256,6 @@ class VehicleRamka(BasicRamka):
             'avg_time_in_zone_15': 0,        # average average time in zone during 15 min (15 items)
             'avg_time_in_zone_60': 0         # average average time in zone during 1 hour (60 items)
         }
-
-        self.__triggered = False        # trigger for time in ramka measurement process
-        self.__start_time = None
 
         self.arrows_path = self.arrows_path_calc(path, h)       # for dt
         self.up_down_side_center_calc()     # for dt
@@ -242,8 +291,57 @@ class VehicleRamka(BasicRamka):
         self.stop = function() # self.stop is threading.Event object
         '''
 
+    def __get_masks_simple(self):
+        minx, miny, maxx, maxy = self.bbox
+        self.__masks = {color: np.zeros((maxy-miny+1, maxx-minx+1, 3)) for color in self.colors_to_vehicles_types_map}
+        indices = self.pixel_indices_inside_path - np.repeat([[minx,miny]], self.pixel_indices_inside_path.shape[0], axis=0)
+        for color, mask in self.__masks.items():
+            mask[tuple(indices.T[[1, 0]].tolist())] = colors_to_bgr_map[color]
+
+    def __get_masks_with_color_sum(self):
+        minx, miny, maxx, maxy = self.bbox
+        self.__masks = {color: {'mask': np.zeros((maxy - miny + 1, maxx - minx + 1, 3), dtype=np.uint8), 'pixel_sum': 0} for color in
+                        self.colors_to_vehicles_types_map}
+        indices = self.pixel_indices_inside_path - np.repeat([[minx, miny]], self.pixel_indices_inside_path.shape[0],
+                                                             axis=0)
+        for color, aux_dict in self.__masks.items():
+            aux_dict['mask'][tuple(indices.T[[1, 0]].tolist())] = colors_to_bgr_map[color]
+            aux_dict['pixel_sum'] = sum(colors_to_bgr_map[color])
+
+    def __get_white_masks(self):
+        minx, miny, maxx, maxy = self.bbox
+        indices = self.pixel_indices_inside_path - np.repeat([[minx, miny]], self.pixel_indices_inside_path.shape[0],
+                                                             axis=0)
+        indices_for_ndarray = tuple(indices.T[[1, 0]].tolist())
+
+        self.__white_mask = np.zeros((maxy - miny + 1, maxx - minx + 1, 3), dtype=np.uint8)
+        self.__white_mask[indices_for_ndarray] = colors_to_bgr_map[Colors.WHITE]
+
+        self.__masks = {color: np.full((maxy-miny+1, maxx-minx+1, 3), colors_to_bgr_map[Colors.WHITE], dtype=np.uint8)
+                        for color in self.colors_to_vehicles_types_map}
+        for color in self.__masks:
+            self.__masks[color][indices_for_ndarray] = colors_to_bgr_map[color]
+
+    def __get_masks(self):
+        self.__get_white_masks()
+        # self.__get_masks_with_color_sum()
+
     def triggered(self) -> bool:
         return self.__triggered
+
+    def activate(self, vehicle_type: VehicleTypes):
+        if self.is_activated() and self.vehicle_type is vehicle_type:
+            return
+
+        super().activate()
+        self.vehicle_type = vehicle_type
+        color = self.vehicles_types_to_colors[vehicle_type]
+        self.set_color(color)
+
+    def deactivate(self):
+        super().deactivate()
+        self.vehicle_type = None
+        self.set_color(self.default_color)
 
     def start_time_measuremnet(self):
         self.__start_time = time.time()
@@ -256,6 +354,103 @@ class VehicleRamka(BasicRamka):
 
         self.__triggered = False
         self.__start_time = None
+
+    def __segmentation_recognize_white_masks(self, image:np.ndarray):
+        if not self.__masks:
+            self.__get_masks()
+
+        minx, miny, maxx, maxy = self.bbox
+        roi = image[miny:maxy + 1, minx:maxx + 1]
+        masked_roi = cv2.bitwise_and(roi, self.__white_mask)
+        colors_to_percent = {}
+        for color, mask in self.__masks.items():
+            result1 = masked_roi - mask
+            result2 = np.logical_or.reduce(result1, axis=-1)
+            result3 = np.count_nonzero(result2)
+            correct_pixels_num = masked_roi.shape[0]*masked_roi.shape[1] - np.count_nonzero(np.logical_or.reduce(masked_roi - mask, axis=-1))
+            colors_to_percent[color] = correct_pixels_num / self.pixel_indices_inside_path.shape[0]
+        colors_to_persent = OrderedDict(sorted(colors_to_percent.items(), key=lambda item: item[1], reverse=True))
+        first_color, first_percent = colors_to_persent.popitem(last=False)
+        if first_percent >= self.threshold:
+            self.activate(self.colors_to_vehicles_types_map[first_color])
+        else:
+            self.deactivate()
+
+
+    def __segmentation_recognize(self, image: np.ndarray):
+        # create masks if not before
+        if not self.__masks:
+            self.__get_masks()
+
+        minx, miny, maxx, maxy = self.bbox
+        roi = image[miny:maxy + 1, minx:maxx + 1]
+        colors_to_persent = {}
+        for color, aux_dict in self.__masks.items():
+            mask, pixel_sum = aux_dict['mask'], aux_dict['pixel_sum']
+            try:
+                masked_roi = cv2.bitwise_and(roi, mask)
+            except:
+                # TODO error raises here periodically
+                print('bad')
+            # if color is Colors.RED:
+            #     cv2.imshow('roi', roi)
+            #     cv2.imshow('mask', mask)
+            #     cv2.imshow('result', masked_roi)
+            #     cv2.waitKey(500)
+            pixel_sum_array = np.sum(masked_roi, axis=-1)
+            correct_pixels_num = np.count_nonzero(pixel_sum_array == pixel_sum)
+            colors_to_persent[color] = correct_pixels_num / self.pixel_indices_inside_path.shape[0]
+        colors_to_persent = OrderedDict(sorted(colors_to_persent.items(), key=lambda item: item[1], reverse=True))
+        first_color, first_percent = colors_to_persent.popitem(last=False)
+        if first_percent >= self.threshold:
+            self.activate(self.colors_to_vehicles_types_map[first_color])
+        else:
+            self.deactivate()
+
+
+    def segmentation_recognize(self, image: np.ndarray):
+        self.__segmentation_recognize_white_masks(image)
+        #self.__segmentation_recognize(image)
+        # if not self.__masks:
+        #     self.__get_masks()
+        #
+        # minx, miny, maxx, maxy = self.bbox
+        # roi = image[miny:maxy+1, minx:maxx+1]
+        # colors_to_percent_map = {color: np.count_nonzero(np.logical_and.reduce(roi == mask)) / self.pixel_indices_inside_path.shape[0] for color, mask in
+        #                                 self.__masks.items()}
+        # colors_to_percent_tuple = sorted(tuple(colors_to_percent_map.items()), key=lambda x: x[1], reverse=True)
+        # if colors_to_percent_tuple[0][1] >= self.threshold:
+        #     self.activate(self.colors_to_vehicles_types_map[colors_to_percent_tuple[0][0]])
+        # else:
+        #     self.deactivate()
+
+        # image = np.copy(image)
+        # if not self.__masks or ((self.current_frame['height'], self.current_frame['width']) != image.shape[:2]):
+        #     self.__get_masks(image.shape[1], image.shape[0])
+
+        # minx, miny, maxx, maxy = self.shapely_path.bounds
+        # result = [image[miny:maxy+1, minx:maxx+1] == mask for mask in self.__masks.values()]
+
+        # colors_to_pixels_num_map = {color: np.count_nonzero(np.logical_and.reduce(image == mask)) for color, mask in self.__masks.items()}
+        # colors_to_percent_tuple = sorted(tuple(colors_to_pixels_num_map.items()), key=lambda x: x[1], reverse=True)
+        # if colors_to_percent_tuple[0][1] >= self.threshold:
+        #     self.activate(self.colors_to_vehicles_types_map[colors_to_percent_tuple[0][0]])
+        # else:
+        #     self.deactivate()
+
+        # roi = mask[tuple(self.pixel_indices_inside_path.T[[1, 0]].tolist())]
+        # roi = np.reshape(roi, (-1, 3))
+        # pixels_num = roi.shape[0]
+        # colors_to_percent_map = {}
+        # interesting_colors_to_bgr_map = {k:colors_to_bgr_map[k] for k in self.colors_to_vehicles_types_map}
+        # for color_name, color_tuple in interesting_colors_to_bgr_map.items():
+        #     color_tuple = np.repeat(np.array([color_tuple]), roi.shape[0], axis=0)
+        #     colors_to_percent_map[color_name] = np.count_nonzero(np.logical_and.reduce(roi == color_tuple, axis=1)) / pixels_num
+        # colors_to_percent_tuple = sorted(tuple(colors_to_percent_map.items()), key=lambda x: x[1], reverse=True)
+        # if colors_to_percent_tuple[0][1] >= self.threshold:
+        #     self.activate(self.colors_to_vehicles_types_map[colors_to_percent_tuple[0][0]])
+        # else:
+        #     self.deactivate()
 
     def up_down_side_center_calc(self):
         """
