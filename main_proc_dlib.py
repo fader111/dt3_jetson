@@ -38,7 +38,14 @@ requests.packages.urllib3.disable_warnings()
 import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
-Gst.init()
+Gst.init_check()
+
+
+def gst_enable_debug(level: int):
+    Gst.debug_set_active(True)
+    Gst.debug_set_default_threshold(level)
+
+# gst_enable_debug(5)
 
 TRACKS_ENABLED = False
 MAX_TRACKS_NUM = 99
@@ -84,7 +91,7 @@ coco_networks = [
 network = coco_networks[2]
 
 if USE_SEGMENTATION_NETWORK:
-    network = 'fcn-resnet18-cityscapes'
+    network = 'fcn-resnet18-cityscapes-1024x512'
 
 threshold = 0.2         # 0.2 for jetson inference object detection
 # tresh for cnn detection bbox and car detecting zone intersection in percents
@@ -389,7 +396,9 @@ def run_rtsp_media_server():
     alternative_path = '/home/a/sources/RtspRestreamServer/build/RestreamServerApp/RestreamServerApp'
     :return:
     """
-    path_of_executable = pathlib.Path('/home/a/sources/rtsp-simple-server/rtsp-simple-server /home/a/sources/rtsp-simple-server/rtsp-simple-server.yml')
+    path_of_executable = pathlib.Path(
+        '/home/a/sources/rtsp-simple-server/rtsp-simple-server /home/a/sources/rtsp-simple-server/rtsp-simple-server.yml'
+    )
     subprocess.Popen(str(path_of_executable), shell=True)
 
 
@@ -429,11 +438,13 @@ def start_hls_streaming():
         duration = 10**9 / frames_per_sec
         while True:
             array = q_pict.get()
-            gst_buffer = ndarray_to_gst_buffer(array)
+            # TODO connect parameters
+            gst_sample = ndarray_to_gst_sample(array, format='BGR', framerate=frames_per_sec)
+            gst_buffer = gst_sample.get_buffer()
             pts += duration                                 # Increase pts by duration
             gst_buffer.pts = pts
             gst_buffer.duration = duration
-            appsrc.emit("push-buffer", gst_buffer)
+            appsrc.emit('push-sample', gst_sample)
 
         appsrc.emit("end-of-stream")
     except Exception as e:
@@ -448,6 +459,9 @@ def ndarray_to_gst_buffer(array: np.ndarray) -> Gst.Buffer:
     """Converts numpy array to Gst.Buffer"""
     return Gst.Buffer.new_wrapped(array.tobytes())
 
+def ndarray_to_gst_sample(array: np.ndarray, format, framerate) -> Gst.Sample:
+    caps = Gst.caps_from_string(f'video/x-raw,format={format},height={array.shape[0]},width={array.shape[1]},framerate={framerate}/1')
+    return Gst.Sample(ndarray_to_gst_buffer(array), caps=caps)
 
 def construct_pipeline(frames_per_sec, dir_of_video, video_filename_template, videofiles_num, playlist_filename,
                        videofiles_duration, appsrc_plugin_name):
@@ -458,10 +472,9 @@ def construct_pipeline(frames_per_sec, dir_of_video, video_filename_template, vi
 
     appsrc = Gst.ElementFactory.make('appsrc', appsrc_plugin_name)
     appsrc.set_property('is-live', True)
-    appsrc.set_property('caps',
-                        Gst.Caps.from_string("video/x-raw,format=%s,width=%d,height=%d,framerate=%d/1" %
-                                             (source_video_format, video_width, video_height, frames_per_sec))
-                        )
+    # appsrc_caps_string = "video/x-raw,format=%s,width=%d,height=%d,framerate=%d/1" % \
+    #                      (source_video_format, video_width, video_height, frames_per_sec)
+    # appsrc.set_property('caps', Gst.Caps.from_string(appsrc_caps_string))
     appsrc.set_property('format', Gst.Format.TIME)
     appsrc.set_property("block", True)
     pipeline.add(appsrc)
