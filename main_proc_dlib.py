@@ -99,8 +99,8 @@ iou_tresh_perc = 65
 
 max_bbox_sqare = 1000   # when detection bbox too small, do not process it.
 
-width = 1280            # 640 width settings for camera capturing
-height = 720            # 480 height for the same
+capture_width = 1920            # 640 width settings for camera capturing
+capture_height = 1080            # 480 height for the same
 proc_width = 640        # x size of window for processing with CNN
 proc_height = 480       # y size
 # camera_src = '/dev/video1'  # for USB camera
@@ -110,7 +110,8 @@ overlay = "box,labels,conf"
 print("[INFO] loading model...")
 # # 
 
-cur_resolution = (width, height)
+# TODO this will work wrong!
+cur_resolution = (capture_width, capture_height)
 scale_factor = cur_resolution[0]/400
 resolution_str = str(cur_resolution[0]) + 'x' + str(cur_resolution[1])
 
@@ -210,13 +211,13 @@ class VideoStreamSources(enum.Enum):
     VIDEO_FILE = 'file'
 
 # not used,  just sample
-camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
-		height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv flip-method=2 ! \
+camera_str2 = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(capture_width)}, \
+		height=(int){str(capture_height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv flip-method=2 ! \
         video/x-raw, format=(string)BGRx ! \
         videoconvert ! video/x-raw, format=(string)BGR ! appsink"
 
-camera_str_h256 = f"nvarguscamerasrc ! 'video/x-raw(memory:NVMM), width={str(width)}, \
-                    height={str(height)},format=NV12, framerate=60/1' ! nvvidconv flip-method=2 ! \
+camera_str_h256 = f"nvarguscamerasrc ! 'video/x-raw(memory:NVMM), width={str(capture_width)}, \
+                    height={str(capture_height)},format=NV12, framerate=60/1' ! nvvidconv flip-method=2 ! \
                     omxh265enc ! qtmux ! appsink wait-on-eos=false max-buffers=1 drop=True"
 
 ufanet_token = '007e291368194ef1a59519d128ea5861'
@@ -252,12 +253,13 @@ def choose_jetson_input_source(stream_source_type):
 def construct_input_pipline(stream_source_type):
     global camera_str
     if stream_source_type is VideoStreamSources.LOCAL_CAMERA:
-        # only for sci camera
-        # framerate=(fraction)60/1 - optimum rate
-        camera_str = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
-                height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv ! \
-                video/x-raw, width=(int)1280, height=(int)720, format=(string)BGRx ! \
-                videoconvert ! video/x-raw, format=(string)BGR ! appsink wait-on-eos=false max-buffers=1 drop=True"
+        # only for csi camera
+        camera_str = f"nvarguscamerasrc ! " \
+                     f"video/x-raw(memory:NVMM),width=(int){str(capture_width)},height=(int){str(capture_height)},format=(string)NV12, framerate=(fraction)30/1 ! " \
+                     f"tee name=tee0 ! omxh264enc ! queue ! rtspclientsink location=rtsp://localhost:8001/camera " \
+                     f"tee0. ! queue ! nvvidconv ! video/x-raw, width=(int)1280, height=(int)720 ! " \
+                     f"videoconvert ! video/x-raw, format=(string)BGR ! " \
+                     f"appsink wait-on-eos=false max-buffers=1 drop=True"
     elif stream_source_type is VideoStreamSources.RTSP_STREAM:
         rtsp_config_filename = pathlib.Path(proj_path) / pathlib.Path('rtsp.config')
         if rtsp_config_filename.exists():
@@ -400,6 +402,7 @@ def run_rtsp_media_server():
         '/home/a/sources/rtsp-simple-server/rtsp-simple-server /home/a/sources/rtsp-simple-server/rtsp-simple-server.yml'
     )
     subprocess.Popen(str(path_of_executable), shell=True)
+    time.sleep(3)
 
 
 def start_hls_streaming():
@@ -409,8 +412,6 @@ def start_hls_streaming():
     playlist_filename = 'playlist.m3u8'
     videofiles_duration = 5
     appsrc_plugin_name = 'appsrc0'
-
-    run_rtsp_media_server()
 
     if dir_of_hls_video.exists():
         clear_dir(dir_of_hls_video)
@@ -439,7 +440,7 @@ def start_hls_streaming():
         while True:
             array = q_pict.get()
             # TODO connect parameters
-            gst_sample = ndarray_to_gst_sample(array, format='BGR', framerate=frames_per_sec)
+            gst_sample = ndarray_to_gst_sample(array, format='BGRx', framerate=frames_per_sec)
             gst_buffer = gst_sample.get_buffer()
             pts += duration                                 # Increase pts by duration
             gst_buffer.pts = pts
@@ -582,14 +583,16 @@ def proc():
     # Init ip and other settings from system
     settings = read_setts_from_syst(proj_path + "settings.dat")
 
+    run_rtsp_media_server()
+
     stream_source_type = VideoStreamSources(settings['source_stream_type'])
     construct_input_pipline(stream_source_type)
 
-    # if USE_CAMERA:
-    #     # cap = cv2.VideoCapture(camera_src) # for GSTreamer handling camera
-    #     cap = cv2.VideoCapture(camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
-    # else:
-    #     cap = cv2.VideoCapture(video_src)
+    if USE_CAMERA:
+        # cap = cv2.VideoCapture(camera_src) # for GSTreamer handling camera
+        cap = cv2.VideoCapture(camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
+    else:
+        cap = cv2.VideoCapture(video_src)
 
     # calibration polygon point Init
     if "calibration" in settings:
@@ -675,7 +678,7 @@ def proc():
     reboot_camera_thread = Thread(target=local_rtsp_camera_reboot_thread)
     reboot_camera_thread.start()
 
-    jetson_video_source = choose_jetson_input_source(VideoStreamSources.LOCAL_CAMERA)     # change to local camera before commit
+    # jetson_video_source = choose_jetson_input_source(VideoStreamSources.LOCAL_CAMERA)     # change to local camera before commit
 
     while True:
         # just for profiling
@@ -693,8 +696,8 @@ def proc():
         tss = time.time()  # 90 ms , 60 w/o/ stdout
         # TODO remove ret
         ret = True
-        img = jetson_video_source.Capture()
-        # ret, img = cap.read()
+        # img = jetson_video_source.Capture()
+        ret, img = cap.read()
         # tss= time.time() #78 ms
 
         # ??
@@ -704,55 +707,55 @@ def proc():
 
         # TODO remove this
         if not ret:
-            ret = True
-            img = jetson_video_source.Capture()
-            # if USE_CAMERA:
-            #     # cap = cv2.VideoCapture(camera_src) # for USB camera
-            #     cap = cv2.VideoCapture(
-            #         camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
-            # else:
-            #     cap = cv2.VideoCapture(video_src)
-            # ret, img = cap.read()
+            # ret = True
+            # img = jetson_video_source.Capture()
+            if USE_CAMERA:
+                # cap = cv2.VideoCapture(camera_src) # for USB camera
+                cap = cv2.VideoCapture(
+                    camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
+            else:
+                cap = cv2.VideoCapture(video_src)
+            ret, img = cap.read()
 
         # orig_img = img
         # TODO remove this
         while not ret:
-            ret = True
-            img = jetson_video_source.Capture()
-            # ret, img = cap.read()
+            # ret = True
+            # img = jetson_video_source.Capture()
+            ret, img = cap.read()
             # print('wait..')
 
         # img = cv2.resize(img, (proc_width, proc_height))
         # img = cv2.resize(img, (800, 604))
         height, width = img.shape[:2]
         # process_img = jetson.utils.cudaImage(proc_width, proc_height)
-        # jetson.utils.cudaResize(img, process_img)
+        #jetson.utils.cudaResize(img, process_img)
         # print(f'orig_img.shape = {orig_img.shape}')
 
         # TODO with numpy
-        # if USE_GAMMA:
-        #     img = gamma(img, gamma=0.8)
+        if USE_GAMMA:
+            img = gamma(img, gamma=0.8)
 
         # give roi. Roi cuted upper part of frame
         up_bord = int(0.2*height)
         # TODO image cropping for roi
-        # img_c = img  # [up_bord:height, 0:width]
+        img_c = img  # [up_bord:height, 0:width]
 
         # img_c = img_c[0:height, 0:int(width/5)]
 
-        # height, width = img_c.shape[:2]
+        height, width = img_c.shape[:2]
         # cv2.line(img, (0, up_bord), (width, up_bord), 255, 1)
 
         # frame_show only for display on interface with texts, rectangles and labels
         # TODO understand this
-        frame_show = frame = jetson.utils.cudaToNumpy(img)
-        # frame_show = frame = img_c
+        # frame_show = frame = jetson.utils.cudaToNumpy(img)
+        frame_show = frame = img_c
         # separate frame_show to another object
-        frame_show = np.copy(frame_show)
+        # frame_show = np.copy(frame_show)
 
         # TODO don't know if it is needed anymore
         # needs for cuda to add new one channel
-        # img_c = cv2.cvtColor(img_c, cv2.COLOR_BGR2RGBA)  # ogiginal variant
+        img_c = cv2.cvtColor(img_c, cv2.COLOR_BGR2RGBA)  # ogiginal variant
 
         
         ### DETECTION PHASE ###
@@ -762,14 +765,14 @@ def proc():
             '''!!!'''
             if not winMode:
                 # TODO don't know if we need this
-                # frame_cuda = jetson.utils.cudaFromNumpy(img_c)
+                frame_cuda = jetson.utils.cudaFromNumpy(img_c)
                 # tss = time.time() # 54 w/o/ stdout on video
                 # frame, width, height = camera.CaptureRGBA(zeroCopy = True)
                 '''!!!'''
                 # TODO do we need width, height?
                 if USE_SEGMENTATION_NETWORK:
-                    buffers.Alloc(img.shape, img.format)
-                    net.Process(img)
+                    buffers.Alloc(frame_cuda.shape, frame_cuda.format)
+                    net.Process(frame_cuda)
                     if buffers.mask:
                         net.Mask(buffers.mask, filter_mode='linear')
                     if buffers.overlay:
