@@ -37,7 +37,8 @@ requests.packages.urllib3.disable_warnings()
 
 import gi
 gi.require_version('Gst', '1.0')
-from gi.repository import Gst, GLib
+gi.require_version('GstApp', '1.0')
+from gi.repository import Gst, GLib, GstApp
 Gst.init_check()
 
 
@@ -45,7 +46,7 @@ def gst_enable_debug(level: int):
     Gst.debug_set_active(True)
     Gst.debug_set_default_threshold(level)
 
-# gst_enable_debug(5)
+# gst_enable_debug(3)
 
 TRACKS_ENABLED = False
 MAX_TRACKS_NUM = 99
@@ -405,6 +406,33 @@ def run_rtsp_media_server():
     time.sleep(3)
 
 
+def start_gstreamer_event_loop():
+    loop = GLib.MainLoop.new(None, False)
+    loop_thread = Thread(target=loop.run)
+    loop_thread.start()
+    return loop, loop_thread
+
+def quit_gstreamer_event_loop(loop, loop_thread):
+    loop.quit()
+    loop_thread.join(timeout=5)
+
+def start_input_stream():
+    appsink_element_name = 'appsink0'
+    pipeline_str = f"nvarguscamerasrc ! " \
+                     f"video/x-raw(memory:NVMM),width=(int){str(capture_width)},height=(int){str(capture_height)}," \
+                        f"format=(string)NV12, framerate=(fraction)30/1 ! " \
+                     f"tee name=tee0 ! omxh264enc ! queue ! rtspclientsink location=rtsp://localhost:8001/camera " \
+                     f"tee0. ! queue ! nvvidconv ! video/x-raw, width=(int)1280, height=(int)720 ! " \
+                     f"videoconvert ! video/x-raw, format=(string)BGR ! " \
+                     f"appsink name={appsink_element_name} wait-on-eos=false max-buffers=1 drop=True"
+
+    pipeline = Gst.parse_launch(pipeline_str)
+    appsink = pipeline.get_by_name(appsink_element_name)
+    pipeline.set_state(Gst.State.PLAYING)
+
+    return appsink
+
+
 def start_hls_streaming():
     frames_per_sec = 10
     video_filename_template = 'file%d.ts'
@@ -427,10 +455,6 @@ def start_hls_streaming():
                                   appsrc_plugin_name = appsrc_plugin_name
                                  )
 
-    loop = GLib.MainLoop.new(None, False)
-    loop_thread = Thread(target=loop.run)
-
-    loop_thread.start()
     try:
         pipeline.set_state(Gst.State.PLAYING)
         appsrc = pipeline.get_by_name(appsrc_plugin_name)
@@ -452,9 +476,6 @@ def start_hls_streaming():
         print("error:", e)
     finally:
         pipeline.set_state(Gst.State.NULL)
-    loop.quit()
-    loop_thread.join(timeout=5)
-
 
 def ndarray_to_gst_buffer(array: np.ndarray) -> Gst.Buffer:
     """Converts numpy array to Gst.Buffer"""
@@ -588,11 +609,11 @@ def proc():
     stream_source_type = VideoStreamSources(settings['source_stream_type'])
     construct_input_pipline(stream_source_type)
 
-    if USE_CAMERA:
-        # cap = cv2.VideoCapture(camera_src) # for GSTreamer handling camera
-        cap = cv2.VideoCapture(camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
-    else:
-        cap = cv2.VideoCapture(video_src)
+    # if USE_CAMERA:
+    #     # cap = cv2.VideoCapture(camera_src) # for GSTreamer handling camera
+    #     cap = cv2.VideoCapture(camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
+    # else:
+    #     cap = cv2.VideoCapture(video_src)
 
     # calibration polygon point Init
     if "calibration" in settings:
@@ -672,6 +693,10 @@ def proc():
     # start new thread for average speed calculating
     stop = function() # stop is threading.Event object
 
+    loop, loop_thread = start_gstreamer_event_loop()
+
+    gst_frame_source = start_input_stream()
+
     hls_streaming_thread = Thread(target=start_hls_streaming)
     hls_streaming_thread.start()
 
@@ -697,7 +722,15 @@ def proc():
         # TODO remove ret
         ret = True
         # img = jetson_video_source.Capture()
-        ret, img = cap.read()
+        sample = gst_frame_source.pull_sample()
+        if not sample:
+            raise Exception("Can't get sample")
+        # bytes_extracted, bytes, acqured_size = sample.get_buffer().extract(0)
+        img = np.ndarray(sample.get_buffer().get_size(),
+                            buffer=sample.get_buffer().extract_dup(0, sample.get_buffer().get_size()), dtype=np.uint8)
+        # TODO hardcode
+        img = img.reshape(720, 1280, -1)
+        # ret, img = cap.read()
         # tss= time.time() #78 ms
 
         # ??
@@ -706,24 +739,24 @@ def proc():
                 ramki_status_[i] = ramki_status[i]
 
         # TODO remove this
-        if not ret:
-            # ret = True
-            # img = jetson_video_source.Capture()
-            if USE_CAMERA:
-                # cap = cv2.VideoCapture(camera_src) # for USB camera
-                cap = cv2.VideoCapture(
-                    camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
-            else:
-                cap = cv2.VideoCapture(video_src)
-            ret, img = cap.read()
-
-        # orig_img = img
-        # TODO remove this
-        while not ret:
-            # ret = True
-            # img = jetson_video_source.Capture()
-            ret, img = cap.read()
-            # print('wait..')
+        # if not ret:
+        #     # ret = True
+        #     # img = jetson_video_source.Capture()
+        #     if USE_CAMERA:
+        #         # cap = cv2.VideoCapture(camera_src) # for USB camera
+        #         cap = cv2.VideoCapture(
+        #             camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
+        #     else:
+        #         cap = cv2.VideoCapture(video_src)
+        #     ret, img = cap.read()
+        #
+        # # orig_img = img
+        # # TODO remove this
+        # while not ret:
+        #     # ret = True
+        #     # img = jetson_video_source.Capture()
+        #     ret, img = cap.read()
+        #     # print('wait..')
 
         # img = cv2.resize(img, (proc_width, proc_height))
         # img = cv2.resize(img, (800, 604))
@@ -1251,6 +1284,7 @@ def proc():
     # cap.release()
     # cap2.release()
     cv2.destroyAllWindows()
+    quit_gstreamer_event_loop(loop, loop_thread)
 
 
 if __name__ == "__main__":
