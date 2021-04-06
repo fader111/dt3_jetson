@@ -64,7 +64,7 @@ visual = True  # visual mode
 proj_path = '/home/a/dt3_jetson/'  # путь до папки проекта
 
 # video_src = "/home/a/Videos/U524806_3.avi"
-video_src = "/home/a/Videos/U524802_1_695_0_new.avi" # 2650 x 2048
+video_src = "/home/a/Videos/snowy5.ts" # 2650 x 2048
 # video_src = '/home/a/Videos/lenin35_640.avi' # h 640
 # video_src = "/home/a/dt3_jetson/jam_video_dinamo.avi" gets some distorted video IDKW
 # video_src = "http://95.215.176.83:10090/video30.mjpg?resolution=&fps="
@@ -165,10 +165,6 @@ def proc():
     else:
         cap = cv2.VideoCapture(video_src)
 
-    a1 =0
-    a2=0
-    a3=0
-
     # prev_bboxes = []  # bboxes to draw from previous frame
     key_time = 1
     new_tr_number = 0  # for tracks numeration
@@ -192,7 +188,7 @@ def proc():
     addrString = ['http://' + settings["hub"] + '/detect']
 
     rtUpdStatusForHub = RepeatedTimer(0.4, send_det_status_to_hub, addrString, ramki_status)
-    rtUpdStatusForHub.start()  
+    # rtUpdStatusForHub.start()  # disabled during DEBUG
 
     while True:
         # if memmon:
@@ -215,9 +211,9 @@ def proc():
         #for ii in range(len(ramki_scaled)):
             # print ramki_scaled[i].color
             # var = ramki_scaled[i].color
-        a1=1
-        if a1==1:
-            ramki_status[0] = 1 #if a1==1 else 0
+        
+        #ramki_status[0] = 1 #if a1==1 else 0
+        
         #    ramki_status[ii] = 1
             # tess = ramki_scaled[i].color
         #    pass
@@ -262,6 +258,7 @@ def proc():
 
         # Detection phase - each 2nd (5th?) frame will detect using Jetson inference
         if frm_number % detect_phase_period == 0:  # 5 - default
+            
             # tss = time.time() # 56 w/o/ stdout on video
             frame_cuda = jetson.utils.cudaFromNumpy(img_c)
             # tss = time.time() # 54 w/o/ stdout on video
@@ -323,7 +320,8 @@ def proc():
                 if stop_:
                     break
                 # or, if bbox didn't assingned to any track, create a new track
-                tracks.append(Track(frame, bbox, new_tr_number, detection.ClassID, detection.Confidence))
+                tracks.append(Track(frame, bbox, new_tr_number, detection.ClassID, detection.Confidence
+                ))
                 new_tr_number += 1
                 if new_tr_number > 99:
                     new_tr_number = 0
@@ -407,8 +405,7 @@ def proc():
                             point = track.points[len(track.points)-1-j]
                             if Point(point).within(ramka.shapely_path):
                                 ramka.color = 1
-                                #ramki_status[i]=1
-                                a1=1
+                                ramki_status[i]=1
 
 
         # then draw polygones with arrows
@@ -440,8 +437,8 @@ def proc():
                         f'{width}x{height} fps{fps} {network}'
             cv2.putText(frame_show, frame_str, (15, 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            # cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
-            # cv2.imshow("Frame", wframe)
+            #cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
+            cv2.imshow("Frame", wframe)
 
             put_queue(q_pict, frame_show)  # put the picture for web in the picture Queue
             key = cv2.waitKey(key_time) & 0xFF
