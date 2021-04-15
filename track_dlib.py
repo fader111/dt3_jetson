@@ -7,13 +7,13 @@ import cv2
 from common_tracker import bbox_touch_the_border
 # import math
 import dlib
-
+from shapely.geometry import Point, Polygon, box
 
 class Track:
     ''' track class includes dlib corr tracker '''
 
     def __init__(self, rgb, bbox, tr_number, ClassID, confidence, warp_dimentions_px,
-                 calib_area_dimentions_m, M, max_point_number=40):
+                 calib_area_dimentions_m, M, contour= None, max_point_number=40):
         self.boxes = []         # track boxes
         self.points = []        # track points
         self.warp_points = []   # track points converted to meters on the road
@@ -22,6 +22,7 @@ class Track:
         self.class_id = ClassID
         self.confidence = confidence
         self.max_point_number = max_point_number
+        self.contour = contour
         self.complete = False   # True means - car went out, don't append it more
         self.status_obt = False # Status of Track obtained by the detection zone class
 
@@ -32,11 +33,12 @@ class Track:
 
         self.boxes.append(bbox)
         pt = self.bbox_center_bottom(bbox)
+        # pt = Point(self.contour).centroid
         self.points.append(pt)
         self.warp_points.append(self.calc_warped_coord(pt))
-        self.t = dlib.correlation_tracker()
-        rect = dlib.rectangle(bbox[0], bbox[1], bbox[2], bbox[3])
-        self.t.start_track(rgb, rect)
+        # self.t = dlib.correlation_tracker()
+        # rect = dlib.rectangle(bbox[0], bbox[1], bbox[2], bbox[3])
+        # self.t.start_track(rgb, rect)
         self.color = self.get_random_color()
 
         # timing section
@@ -46,18 +48,19 @@ class Track:
         # updates in renew() and update() methods
         self.prev_ts = 0
 
-    def renew(self, rgb, bbox, ClassID, confidence):
+    def renew(self, rgb, bbox, ClassID, confidence, contour= None):
         ''' appends bboxes to track in detection phase:
             delete tracker, make a new one'''
         self.class_id = ClassID
         self.confidence = confidence
         self.boxes.append(bbox)
         pt = self.bbox_center_bottom(bbox)
+        # pt = contour.centroid(bbox)
         self.points.append(pt)
         self.warp_points.append(self.calc_warped_coord(pt))
-        self.t = dlib.correlation_tracker()
-        rect = dlib.rectangle(bbox[0], bbox[1], bbox[2], bbox[3])
-        self.t.start_track(rgb, rect)
+        # self.t = dlib.correlation_tracker()
+        # rect = dlib.rectangle(bbox[0], bbox[1], bbox[2], bbox[3])
+        # self.t.start_track(rgb, rect)
         self.prev_ts = self.ts
         self.ts = time.time()
         self.renew_ts = time.time()
@@ -65,8 +68,8 @@ class Track:
 
     def update(self, rgb):
         ''' updates self.t tracker in tracking phase'''
-        self.t.update(rgb)
-        pos = self.t.get_position()
+        # self.t.update(rgb)
+        #pos = self.t.get_position()
         x1 = int(pos.left())
         y1 = int(pos.top())
         x2 = int(pos.right())
@@ -146,10 +149,15 @@ class Track:
             else:
                 self.aver_speed = (
                     self.aver_speed*len(self.warp_points)+speed) / (len(self.warp_points)+1)
+    
+    def centroid(self, poly):
+        ''' calc gemetr centr of shapely object
+        '''
+        return poly.centroid
 
     def draw_tracks(self, frm):
         '''draw tracks points and lines'''
-        if 1:  # len(self.points) > 2:  # если в треке достаточно точек для рисования
+        if len(self.points) > 1:  # если в треке достаточно точек для рисования
             cv2.putText(frm, str(self.tr_number), (self.points[0][0]+5, self.points[0][1]+5),
                         cv2.FONT_HERSHEY_DUPLEX, 0.5, self.color, 1)
             if True:  # not self.filtr:
