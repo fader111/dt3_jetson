@@ -44,20 +44,27 @@ q_status60 = Queue(maxsize=5)     # current status60 of process for web.
 q_status15 = Queue(maxsize=5)     # current status15 of process for web.
 
 # jetson inference networks list
-network_lst = ["ssd-mobilenet-v2",  # 0 the best one???
+network_lst = ["ssd-mobilenet",  # 0 the best one???
                "ssd-inception-v2",  # 1
                "pednet",            # 2
                "alexnet",           # 3
                "facenet",           # 4
                "googlenet"          # 5 also good
                ]
-
 network = network_lst[1]
+# '''
+sys.argv.append('--model=/home/a/sources/jetson-inference/python/training/detection/ssd/models/vehicle/ssd-mobilenet.onnx')
+sys.argv.append('--labels=/home/a/sources/jetson-inference/python/training/detection/ssd/models/vehicle/labels.txt')
+sys.argv.append('--input-blob=input_0')
+sys.argv.append('--output-cvg=scores')
+sys.argv.append('--output-bbox=boxes')
 
+network = "/home/a/sources/jetson-inference/python/training/detection/ssd/models/vehicle/ssd-mobilenet.onnx"
+# '''
+# network = "/usr/src/tensorrt/samples/python/yolov3_onnx____/yolov3.onnx"
 threshold = 0.2         # 0.2 for jetson inference object detection
 # tresh for cnn detection bbox and car detecting zone intersection in percents
 iou_tresh_perc = 10
-
 max_bbox_sqare = 1000   # when detection bbox too small, do not process it.
 
 width = 1920            # 640 width settings for camera capturing
@@ -67,7 +74,8 @@ proc_height = 480       # y size
 # camera_src = '/dev/video1'  # for USB camera
 # camera_src = '0'  # for sci Gstreamer
 # camera = jetson.utils.gstCamera(width, height, camera_src) # also possible capturing way
-overlay = "box,labels,conf"
+# overlay = "box,labels,conf"
+overlay = ""
 print("[INFO] loading model...")
 # # 
 
@@ -91,7 +99,7 @@ status60 = {
     "avg_time_in_zone": []
 }
 
-visual = True  # visual mode
+visual = False  # visual mode
 winMode = False  # debug mode for windows - means that we are in windows now
 
 if 'win' in sys.platform:
@@ -106,7 +114,8 @@ if 'win' in sys.platform:
     video_src = "G:/U524802_1_695_0_new.avi"
 else:
     video_src = "/home/a/Videos/U524802_1_695_0_new.avi"  # 2650 x 2048
-    video_src = "/home/a/Videos/snowy5.ts"  # 2650 x 2048
+    video_src = "/home/a/Videos/snowy5.mp4"  # 2650 x 2048
+    # video_src = "/home/a/Videos/tula1.mp4"  # 2650 x 2048
     
 # video_src = '/home/a/Videos/lenin35_640.avi' # h 640
 # video_src = "/home/a/dt3_jetson/jam_video_dinamo.avi" gets some distorted video IDKW
@@ -116,13 +125,13 @@ else:
 # video_src = "G:/fotovideo/video_src/usb2.avi"
 
 # True - camera, False - video file /80ms per frame on camera, 149 on video
-USE_CAMERA = False
+USE_CAMERA = 0
 USE_GAMMA = False  # Gamma correction - True - for night video
 
 # bboxes = []  # bbox's of each frame # candidate for removing
 max_track_lifetime = 2  # if it older than num secs it removes
 if USE_CAMERA:
-    detect_phase_period = 10  # detection phase period in frames
+    detect_phase_period = 1  # detection phase period in frames
 else:
     detect_phase_period = 1  # detection phase period in frames
 
@@ -132,7 +141,7 @@ iou_tresh = 0.2
 # only for sci camera
 # framerate=(fraction)60/1 - optimum rate
 camera_str = f"nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int){str(width)}, \
-		height=(int){str(height)},format=(string)NV12, framerate=(fraction)60/1 ! nvvidconv flip-method=2 ! \
+		height=(int){str(height)},format=(string)NV12, framerate=(fraction)30/1 ! nvvidconv flip-method=2 ! \
         video/x-raw, width=(int)1280, height=(int)720, format=(string)BGRx ! \
         videoconvert ! video/x-raw, format=(string)BGR ! appsink wait-on-eos=false max-buffers=1 drop=True"
 
@@ -326,7 +335,7 @@ def proc():
 
     rtUpdStatusForHub = RepeatedTimer(
         0.4, send_det_status_to_hub, addrString, ramki_status_)
-    rtUpdStatusForHub.start()
+    # rtUpdStatusForHub.start()
 
     init_status60_15_struct(len(ramki_scaled)) # initiates status60 and status15 massives
     # with proper number of detecting zones
@@ -359,6 +368,9 @@ def proc():
     # start new thread for average speed calculating
     stop = function() # stop is threading.Event object
 
+    # jetson Utils Capturing 
+    jcap = jetson.utils.videoSource(video_src, argv=sys.argv)
+
     while True:
         # if memmon:
         # snapshot = tracemalloc.take_snapshot()
@@ -368,53 +380,26 @@ def proc():
         # wdt_tmr.start()# отключено на время отладки
         frm_number += 1
         tss = time.time()  # 90 ms , 60 w/o/ stdout
-        ret, img = cap.read()
+        # ret, img = cap.read()
+        # Jetson Capture var
+        ret = False
+        img = jcap.Capture()
+
         # tss= time.time() #78 ms
 
         if len(ramki_status) == len(ramki_status_):
             for i in range(len(ramki_status)):
                 ramki_status_[i] = ramki_status[i]
 
-        if not ret:
-            break
-            if USE_CAMERA:
-                # cap = cv2.VideoCapture(camera_src) # for USB camera
-                cap = cv2.VideoCapture(
-                    camera_str, cv2.CAP_GSTREAMER)  # for SCI camera
-            else:
-                cap = cv2.VideoCapture(video_src)
-            ret, img = cap.read()
-
         orig_img = img
-        while not ret:
-            ret, img = cap.read()
-            print('wait..')
-        img = cv2.resize(img, (proc_width, proc_height))
-        # img = cv2.resize(img, (800, 604))
         height, width = img.shape[:2]
-        # print(f'orig_img.shape = {orig_img.shape}')
-
-        if USE_GAMMA:
-            img = gamma(img, gamma=0.8)
-
-        # give roi. Roi cuted upper part of frame
-        up_bord = int(0.2*height)
         img_c = img  # [up_bord:height, 0:width]
-
-        # img_c = img_c[0:height, 0:int(width/5)]
-
         height, width = img_c.shape[:2]
-        # cv2.line(img, (0, up_bord), (width, up_bord), 255, 1)
+        frame_show_r = frame = jetson.utils.cudaToNumpy(img_c)
+        frame_show = frame_show_r.copy()
+        cv2.imshow('frame_show', frame)
+        frame_cuda = img_c
 
-        # frame_show only for display on interface with texts, rectangles and labels
-        frame_show = frame = img_c
-        # separate frame_show to another object
-        frame_show = np.copy(frame_show)
-
-        # needs for cuda to add new one channel
-        img_c = cv2.cvtColor(img_c, cv2.COLOR_BGR2RGBA)  # ogiginal variant
-
-        
         ### DETECTION PHASE ###
         
         #  each 2nd (5th?) frame will detect using Jetson inference
@@ -422,7 +407,8 @@ def proc():
             # tss = time.time() # 56 w/o/ stdout on video
             '''!!!'''
             if not winMode:
-                frame_cuda = jetson.utils.cudaFromNumpy(img_c)
+                # frame_cuda = jetson.utils.cudaFromNumpy(img_c)
+                
                 # tss = time.time() # 54 w/o/ stdout on video
                 # frame, width, height = camera.CaptureRGBA(zeroCopy = True)
                 '''!!!'''
@@ -442,6 +428,7 @@ def proc():
 #            frame = cv2.cvtColor(frame.astype(np.uint8), cv2.COLOR_RGBA2RGB)
 
             for detection in detections:
+                # print ("DETECT LEN ", len(detections))
                 # print('  class', detection.Area, detection.ClassID)
                 # print('detection', detection)
                 x1 = int(detection.Left)
@@ -663,7 +650,7 @@ def proc():
                                 # put average speed of track to the zone 
                                 # if flag obtaining status is False, and it's not the first track point
                                 # then obtain status
-                                if not track.status_obt and (len(track.points) > 3):
+                                if not track.status_obt and (len(track.points) > 1):
 
                                     ### Average spped ###
                                     ramka.status['avg_speed_1'].append(round(track.aver_speed))
@@ -802,14 +789,15 @@ def proc():
         else:
             tpf_midle = (tpf_midle + ((tpf)-tpf_midle)/frm_number)
 
-        if visual:
+        if 1:
             # img = cv2.resize(img, (800, 600))
             frame_str = f'{int(tpf)} ms/f tr-{len(tracks)} ' + \
                         f'{width}x{height} fps{fps} {network}'
             cv2.putText(frame_show, frame_str, (15, 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             #cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
-            cv2.imshow("Frame", frame_show)
+            if visual:
+                cv2.imshow("Frame", frame_show)
 
             if WITH_TOP_VIEW_IMG:
                 # warped image show
@@ -830,7 +818,7 @@ def proc():
             if key == ord("t"):
                 tracks = []  # kill all tracks pressing d
         if frm_number % 10 == 0:
-            print(f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks)}')
+            # print(f'                                                        {int(tpf_midle)} msec/frm   tracks- {len(tracks)}')
             pass
 
         # if memmon:
@@ -843,4 +831,5 @@ def proc():
 
 
 if __name__ == "__main__":
+    visual = True
     proc()
